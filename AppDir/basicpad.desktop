@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=BasicPad
+Comment=Lightweight text editor with a roadmap toward high-quality read-aloud features
+Exec=basicpad
+Icon=basicpad
+Terminal=false
+Categories=Utility;TextEditor;
+StartupWMClass=BasicPad

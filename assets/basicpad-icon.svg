@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title>BasicPad icon</title>
+  <rect x="18" y="12" width="78" height="104" rx="10" fill="#f6f1df" stroke="#1f3a5f" stroke-width="6"/>
+  <rect x="92" y="12" width="18" height="52" rx="6" fill="#d46a2e" stroke="#1f3a5f" stroke-width="6"/>
+  <line x1="32" y1="42" x2="82" y2="42" stroke="#4a78a8" stroke-width="6" stroke-linecap="round"/>
+  <line x1="32" y1="58" x2="82" y2="58" stroke="#4a78a8" stroke-width="6" stroke-linecap="round"/>
+  <line x1="32" y1="74" x2="82" y2="74" stroke="#4a78a8" stroke-width="6" stroke-linecap="round"/>
+  <line x1="32" y1="90" x2="68" y2="90" stroke="#4a78a8" stroke-width="6" stroke-linecap="round"/>
+</svg>

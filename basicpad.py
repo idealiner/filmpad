@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
+from pathlib import Path
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox
+
+
+def resource_path(relative_path: str) -> Path:
+    base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base_path / relative_path
 
 
 class BasicPad:
@@ -8,6 +15,7 @@ class BasicPad:
         self.root = root
         self.root.title("BasicPad")
         self.root.geometry("900x600")
+        self.icon_image = None
 
         self.current_file = None
 
@@ -18,7 +26,19 @@ class BasicPad:
         self.scroll.pack(side="right", fill="y")
         self.text.pack(fill="both", expand=True)
 
+        self._set_window_icon()
         self._build_menu()
+
+    def _set_window_icon(self) -> None:
+        icon_path = resource_path("assets/basicpad-icon.ppm")
+        if not icon_path.exists():
+            return
+
+        try:
+            self.icon_image = tk.PhotoImage(file=icon_path)
+            self.root.iconphoto(True, self.icon_image)
+        except tk.TclError:
+            self.icon_image = None
 
     def _build_menu(self) -> None:
         menu_bar = tk.Menu(self.root)
