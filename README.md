@@ -12,6 +12,8 @@ Current implementation includes:
 - File operations: New, Open, Save, Save As
 - Unsaved-change protection prompts
 - Keyboard shortcuts: Ctrl+N, Ctrl+O, Ctrl+S
+- Screenplay-friendly monospaced font selection (Courier-first fallback chain)
+- Dropdown and menu actions to reformat selected text as common screenplay blocks
 - Linux launcher scripts for source and packaged app
 - PyInstaller spec for distributable binaries
 
@@ -201,6 +203,31 @@ Direct Python launch:
 ```bash
 python3 basicpad.py
 ```
+
+## Screenplay Formatting Workflow
+
+BasicPad now includes a screenplay formatting toolbar:
+
+- Pick a screenplay-style monospaced font (prefers Courier-family fonts when available)
+- Select one or more lines in the editor
+- Choose a block type from the `Screenplay Format` dropdown
+- Click `Apply To Selection`
+
+Supported block formats:
+
+- Action
+- Scene Heading
+- Character
+- Parenthetical
+- Dialogue
+- Transition
+- Shot
+
+Behavior notes:
+
+- Scene Heading, Character, Transition, and Shot are uppercased automatically
+- Parenthetical wraps selected lines with parentheses when needed
+- Formatting is line-based and applies margins/spacing for each screenplay block type
 
 ## Building a Binary
 
