@@ -4,6 +4,19 @@ FilmPad is a lightweight desktop text editor built with Python and Tkinter.
 
 This repository is open source and is designed to evolve into a high-quality read-aloud platform for text content (documents, notes, scripts, and long-form writing) with both local and cloud text-to-speech (TTS) backends.
 
+## Download (Linux AppImage)
+
+- Direct download (v0.1): https://github.com/idealiner/filmpad/releases/download/v0.1/FilmPad-v0.1-x86_64.AppImage
+- Release page: https://github.com/idealiner/filmpad/releases/tag/v0.1
+- Public download page: https://idealiner.github.io/filmpad/
+
+Quick run:
+
+```bash
+chmod +x FilmPad-v0.1-x86_64.AppImage
+./FilmPad-v0.1-x86_64.AppImage
+```
+
 ## Project Status
 
 Current implementation includes:
