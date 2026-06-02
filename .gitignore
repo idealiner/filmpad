@@ -11,6 +11,10 @@ env/
 # Build and packaging outputs
 build/
 dist/
+AppDir/
+squashfs-root/
+*.AppImage
+tools/appimagetool
 *.spec.bak
 
 # Tooling caches
