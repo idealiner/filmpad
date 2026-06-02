@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=FilmPad
-Comment=Lightweight text editor with a roadmap toward high-quality read-aloud features
-Exec=filmpad
-Icon=filmpad
-Terminal=false
-Categories=Utility;TextEditor;
-StartupWMClass=FilmPad
