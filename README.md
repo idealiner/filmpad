@@ -22,6 +22,8 @@ Read-aloud integration is the primary roadmap item and this README defines the t
 ## Repository Layout
 
 - `filmpad.py`: Tkinter editor application entry point
+- `LICENSE`: MIT license for public open-source release
+- `docs/index.html`: Public download page for the v0.1 AppImage release
 - `filmpad.spec`: PyInstaller build configuration
 - `assets/`: App icon assets used by the runtime window and packaging
 - `packaging/filmpad.desktop`: Desktop entry used for Linux packaging
@@ -242,6 +244,8 @@ pyinstaller filmpad.spec
 This produces build artifacts in `build/` and packaged output in `dist/`.
 
 The PyInstaller bundle includes the `assets/` directory so the packaged app can load its window icon at runtime.
+
+For the public v0.1 Linux release, build the AppImage as `FilmPad-v0.1-x86_64.AppImage` and publish it alongside the static download page in `docs/index.html`.
 
 ## Packaging With an App Icon
 
