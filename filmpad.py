@@ -235,7 +235,7 @@ class FilmPad:
         return "\n".join(formatted_lines)
 
     def _set_window_icon(self) -> None:
-        icon_path = resource_path("assets/filmpad-icon.ppm")
+        icon_path = resource_path("assets/filmpad-icon.png")
         if not icon_path.exists():
             return
 

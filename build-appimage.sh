@@ -10,15 +10,15 @@ if ! command -v pyinstaller >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! command -v appimagetool >/dev/null 2>&1; then
-    echo "appimagetool is required to produce an AppImage" >&2
-    echo "Download it from https://appimage.github.io/appimagetool/ and place it on PATH." >&2
-    exit 1
-fi
-
-if ! command -v convert >/dev/null 2>&1; then
-    echo "ImageMagick 'convert' is required to generate PNG icon assets" >&2
-    exit 1
+appimagetool_bin="$(command -v appimagetool || true)"
+if [[ -z "$appimagetool_bin" ]]; then
+    if [[ -x tools/appimagetool ]]; then
+        appimagetool_bin="tools/appimagetool"
+    else
+        echo "appimagetool is required to produce an AppImage" >&2
+        echo "Download it from https://appimage.github.io/appimagetool/ and place it on PATH." >&2
+        exit 1
+    fi
 fi
 
 rm -rf build dist AppDir
@@ -29,8 +29,19 @@ mkdir -p AppDir/usr/share/applications
 mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
 mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
 
-icon_png="build/filmpad-icon.png"
-convert assets/filmpad-icon.svg -resize 256x256 "$icon_png"
+icon_png="assets/filmpad-icon.png"
+if [[ ! -f "$icon_png" ]]; then
+    if ! command -v convert >/dev/null 2>&1; then
+        echo "Missing $icon_png and ImageMagick 'convert' is not available for SVG fallback." >&2
+        exit 1
+    fi
+    if [[ ! -f assets/filmpad-icon.svg ]]; then
+        echo "Missing both assets/filmpad-icon.png and assets/filmpad-icon.svg" >&2
+        exit 1
+    fi
+    icon_png="build/filmpad-icon.png"
+    convert assets/filmpad-icon.svg -resize 256x256 "$icon_png"
+fi
 
 install -m 0755 dist/filmpad AppDir/usr/bin/filmpad
 install -m 0644 packaging/filmpad.desktop AppDir/usr/share/applications/filmpad.desktop
@@ -47,6 +58,6 @@ exec "$HERE/usr/bin/filmpad" "$@"
 EOF
 chmod +x AppDir/AppRun
 
-ARCH="$arch" appimagetool AppDir "FilmPad-${arch}.AppImage"
+ARCH="$arch" "$appimagetool_bin" AppDir "FilmPad-${arch}.AppImage"
 
 echo "Built FilmPad-${arch}.AppImage"
