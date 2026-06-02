@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=BasicPad
+Name=FilmPad
 Comment=Lightweight text editor with a roadmap toward high-quality read-aloud features
-Exec=basicpad
-Icon=basicpad
+Exec=filmpad
+Icon=filmpad
 Terminal=false
 Categories=Utility;TextEditor;
-StartupWMClass=BasicPad
+StartupWMClass=FilmPad

@@ -37,10 +37,10 @@ SCREENPLAY_FORMATS = {
 SPELL_TAG = "misspelled"
 
 
-class BasicPad:
+class FilmPad:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("BasicPad")
+        self.root.title("FilmPad")
         self.root.geometry("900x600")
         self.icon_image = None
         self.available_fonts = self._available_screenplay_fonts()
@@ -235,7 +235,7 @@ class BasicPad:
         return "\n".join(formatted_lines)
 
     def _set_window_icon(self) -> None:
-        icon_path = resource_path("assets/basicpad-icon.ppm")
+        icon_path = resource_path("assets/filmpad-icon.ppm")
         if not icon_path.exists():
             return
 
@@ -352,7 +352,7 @@ class BasicPad:
 
     def _set_title(self) -> None:
         name = self.current_file if self.current_file else "Untitled"
-        self.root.title(f"BasicPad - {name}")
+        self.root.title(f"FilmPad - {name}")
 
     def _confirm_discard(self) -> bool:
         if self.text.edit_modified():
@@ -430,7 +430,7 @@ class BasicPad:
 
 def main() -> None:
     root = tk.Tk()
-    app = BasicPad(root)
+    app = FilmPad(root)
     app._set_title()
     root.protocol("WM_DELETE_WINDOW", app.on_exit)
     root.mainloop()

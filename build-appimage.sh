@@ -22,31 +22,31 @@ if ! command -v convert >/dev/null 2>&1; then
 fi
 
 rm -rf build dist AppDir
-pyinstaller basicpad.spec
+pyinstaller filmpad.spec
 
 mkdir -p AppDir/usr/bin
 mkdir -p AppDir/usr/share/applications
 mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
 mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
 
-icon_png="build/basicpad-icon.png"
-convert assets/basicpad-icon.svg -resize 256x256 "$icon_png"
+icon_png="build/filmpad-icon.png"
+convert assets/filmpad-icon.svg -resize 256x256 "$icon_png"
 
-install -m 0755 dist/basicpad AppDir/usr/bin/basicpad
-install -m 0644 packaging/basicpad.desktop AppDir/usr/share/applications/basicpad.desktop
-install -m 0644 assets/basicpad-icon.svg AppDir/usr/share/icons/hicolor/scalable/apps/basicpad.svg
-install -m 0644 "$icon_png" AppDir/usr/share/icons/hicolor/256x256/apps/basicpad.png
-install -m 0644 packaging/basicpad.desktop AppDir/basicpad.desktop
-install -m 0644 assets/basicpad-icon.svg AppDir/basicpad.svg
-install -m 0644 "$icon_png" AppDir/basicpad.png
+install -m 0755 dist/filmpad AppDir/usr/bin/filmpad
+install -m 0644 packaging/filmpad.desktop AppDir/usr/share/applications/filmpad.desktop
+install -m 0644 assets/filmpad-icon.svg AppDir/usr/share/icons/hicolor/scalable/apps/filmpad.svg
+install -m 0644 "$icon_png" AppDir/usr/share/icons/hicolor/256x256/apps/filmpad.png
+install -m 0644 packaging/filmpad.desktop AppDir/filmpad.desktop
+install -m 0644 assets/filmpad-icon.svg AppDir/filmpad.svg
+install -m 0644 "$icon_png" AppDir/filmpad.png
 cp "$icon_png" AppDir/.DirIcon
 cat > AppDir/AppRun <<'EOF'
 #!/usr/bin/env bash
 HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/usr/bin/basicpad" "$@"
+exec "$HERE/usr/bin/filmpad" "$@"
 EOF
 chmod +x AppDir/AppRun
 
-ARCH="$arch" appimagetool AppDir "BasicPad-${arch}.AppImage"
+ARCH="$arch" appimagetool AppDir "FilmPad-${arch}.AppImage"
 
-echo "Built BasicPad-${arch}.AppImage"
+echo "Built FilmPad-${arch}.AppImage"
