@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
@@ -108,6 +109,8 @@ class FilmPad:
         self._ollama_process: subprocess.Popen | None = None
         self._generation_cancelled = False
         self._progress_win: tk.Toplevel | None = None
+        self.local_ai_replace_range: tuple[str, str] | None = None
+        self._speech_process: subprocess.Popen | None = None
 
         self._build_local_ai_workspace()
 
@@ -148,6 +151,18 @@ class FilmPad:
             text="Apply To Selection",
             command=self.apply_screenplay_format,
         ).pack(side="left")
+
+        ttk.Separator(self.toolbar, orient="vertical").pack(side="left", fill="y", padx=(14, 10))
+        ttk.Button(
+            self.toolbar,
+            text="\u25b6 Read Aloud",
+            command=self._read_aloud_selection,
+        ).pack(side="left")
+        ttk.Button(
+            self.toolbar,
+            text="\u25a0 Stop",
+            command=self._stop_read_aloud,
+        ).pack(side="left", padx=(6, 0))
 
     def _on_font_selected(self, _event: tk.Event) -> None:
         self.screenplay_font.configure(family=self.font_var.get(), size=11)
@@ -650,6 +665,43 @@ class FilmPad:
         self.local_ai_result_label_var.set(f"Result — {name}")
         self.local_ai_status_var.set(f"Opened {name}. Click in the result pane to set the insertion point.")
 
+    def _read_aloud_selection(self) -> None:
+        if not shutil.which("spd-say"):
+            messagebox.showinfo(
+                "Read Aloud",
+                "spd-say is not installed.\n\nInstall with:\n  sudo apt install speech-dispatcher",
+            )
+            return
+        target = self._active_editor_widget()
+        try:
+            text = target.get("sel.first", "sel.last")
+        except tk.TclError:
+            text = target.get("1.0", "end-1c")
+        text = text[:3000]
+        if not text.strip():
+            return
+        self._stop_read_aloud()
+        self._speech_process = subprocess.Popen(
+            ["spd-say", "-l", "en-US", "-t", "male1", "-r", "-20", text],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def _stop_read_aloud(self) -> None:
+        proc = self._speech_process
+        if proc is not None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+        self._speech_process = None
+        if shutil.which("spd-say"):
+            subprocess.Popen(
+                ["spd-say", "-C"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
     def _pick_local_ai_temp_dir(self) -> None:
         path = filedialog.askdirectory(title="Choose chunks temp folder")
         if path:
@@ -800,13 +852,26 @@ class FilmPad:
 
         self._progress_step_var = tk.StringVar(value="Step 1 / 3  —  Preparing source slice")
         ttk.Label(outer, textvariable=self._progress_step_var,
-                  foreground="#555").pack(anchor="w", pady=(4, 6))
+                  foreground="#555").pack(anchor="w", pady=(4, 2))
+
+        self._elapsed_var = tk.StringVar(value="Elapsed: 0:00")
+        ttk.Label(outer, textvariable=self._elapsed_var,
+                  foreground="#888").pack(anchor="w", pady=(0, 4))
+        self._generation_start_time = time.monotonic()
+        self._tick_elapsed_timer()
 
         self._progress_bar = ttk.Progressbar(outer, mode="indeterminate", length=390)
         self._progress_bar.pack(fill="x")
         self._progress_bar.start(10)
 
         ttk.Button(outer, text="Cancel", command=self._cancel_local_ai_generation).pack(pady=(12, 0))
+
+    def _tick_elapsed_timer(self) -> None:
+        if self._progress_win and self._progress_win.winfo_exists():
+            elapsed = int(time.monotonic() - self._generation_start_time)
+            mins, secs = divmod(elapsed, 60)
+            self._elapsed_var.set(f"Elapsed: {mins}:{secs:02d}")
+            self._progress_win.after(1000, self._tick_elapsed_timer)
 
     def _update_progress_step(self, step: int, message: str) -> None:
         if self._progress_win and self._progress_win.winfo_exists():
@@ -899,6 +964,14 @@ class FilmPad:
 
         self.local_ai_generating = True
         self._generation_cancelled = False
+        # Capture any result-pane selection NOW so it can be replaced on insert
+        try:
+            self.local_ai_replace_range = (
+                self.local_ai_result_text.index("sel.first"),
+                self.local_ai_result_text.index("sel.last"),
+            )
+        except tk.TclError:
+            self.local_ai_replace_range = None
         self._show_progress_overlay(source_name, start_line, end_line, model)
         self.root.config(cursor="watch")
 
@@ -954,11 +1027,17 @@ class FilmPad:
         self._update_progress_step(3, "Processing output")
 
         cleaned_output = self._sanitize_local_ai_output(output)
-        # Resolve the insert position before modifying the widget
-        try:
-            insert_at = self.local_ai_result_text.index(self.local_ai_insert_index)
-        except tk.TclError:
-            insert_at = self.local_ai_result_text.index(tk.END)
+        # If the user had a selection in the result pane, replace it; otherwise insert at cursor
+        if self.local_ai_replace_range:
+            sel_start, sel_end = self.local_ai_replace_range
+            self.local_ai_result_text.delete(sel_start, sel_end)
+            insert_at = sel_start
+            self.local_ai_replace_range = None
+        else:
+            try:
+                insert_at = self.local_ai_result_text.index(self.local_ai_insert_index)
+            except tk.TclError:
+                insert_at = self.local_ai_result_text.index(tk.END)
         self.local_ai_result_text.tag_remove(LOCAL_AI_RESULT_HIGHLIGHT_TAG, "1.0", tk.END)
         self.local_ai_result_text.insert(insert_at, cleaned_output)
         # Highlight only the newly inserted block
