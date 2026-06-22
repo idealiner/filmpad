@@ -1,0 +1,817 @@
+#!/bin/bash
+
+# ============================================================
+# Local AI Launcher
+# Ollama terminal assistant with optional project context
+# ============================================================
+
+# -------- Settings --------
+
+BRINKCHASER_DIR="/home/uncannyvalleypictures/ModalAI/Movies/Brinkchaser"
+BRINKCHASER_MEMORY="$BRINKCHASER_DIR/99_SESSION_MEMORY.md"
+
+BRINKCHASER_TEMPLATES_DIR="$BRINKCHASER_DIR/templates"
+BRINKCHASER_EXTRACTIONS_DIR="$BRINKCHASER_DIR/extractions"
+
+SCREENPLAY_TEMPLATE_FILE="$BRINKCHASER_TEMPLATES_DIR/SCREENPLAY_SCENE_ADAPTATION_TEMPLATE.md"
+
+DEFAULT_GENERAL_MODEL="llama3.1:8b"
+DEFAULT_STORY_MODEL="mistral:7b"
+DEFAULT_CODE_MODEL="qwen2.5-coder:7b"
+
+# Maximum total characters of project context to include.
+# Increase later if your machine handles it, but this is safer.
+MAX_CONTEXT_CHARS=45000
+
+# -------- Start Ollama --------
+
+echo "===================================="
+echo "        Local Ollama AI"
+echo "===================================="
+echo
+
+if ! systemctl is-active --quiet ollama; then
+  echo "Starting Ollama service..."
+  sudo systemctl start ollama
+  sleep 2
+fi
+
+if ! ollama list >/dev/null 2>&1; then
+  echo "Ollama is not responding."
+  echo "Trying manual server mode..."
+  ollama serve >/tmp/ollama-serve.log 2>&1 &
+  sleep 3
+fi
+
+if ! ollama list >/dev/null 2>&1; then
+  echo "ERROR: Ollama still is not responding."
+  echo "Try: sudo systemctl restart ollama"
+  exit 1
+fi
+
+echo "Installed models:"
+echo "-----------------"
+ollama list
+echo
+
+# -------- Helper: choose model --------
+
+choose_model() {
+  local default_model="$1"
+
+  echo
+  echo "Choose model:"
+  echo "1) llama3.1:8b       - best general local chat/writing"
+  echo "2) mistral:7b        - good story / Brinkchaser writing"
+  echo "3) qwen2.5-coder:7b  - best for coding/config"
+  echo "4) use default: $default_model"
+  echo
+
+  read -r -p "Enter choice [1-4]: " model_choice
+
+  case "$model_choice" in
+    1)
+      MODEL="llama3.1:8b"
+      ;;
+    2)
+      MODEL="mistral:7b"
+      ;;
+    3)
+      MODEL="qwen2.5-coder:7b"
+      ;;
+    4|"")
+      MODEL="$default_model"
+      ;;
+    *)
+      echo "Invalid choice. Using default: $default_model"
+      MODEL="$default_model"
+      ;;
+  esac
+}
+
+# -------- Helper: build project context --------
+
+build_project_context() {
+  local project_dir="$1"
+  local project_name="$2"
+  local context=""
+  local total_chars=0
+
+  if [ ! -d "$project_dir" ]; then
+    echo "ERROR: Project folder not found:"
+    echo "$project_dir"
+    return 1
+  fi
+
+  # Include common text/script formats only.
+  # Avoid binary/docx/pdf/images for now.
+  while IFS= read -r -d '' file; do
+    local file_size
+    file_size=$(wc -c < "$file" 2>/dev/null)
+
+    # Skip very large single files for safety.
+    # You can split them into smaller .md files later.
+    if [ "$file_size" -gt 30000 ]; then
+      context+=$'\n'
+      context+="---- FILE SKIPPED, TOO LARGE: ${file#$project_dir/} ($file_size bytes) ----"
+      context+=$'\n'
+      continue
+    fi
+
+    if [ $((total_chars + file_size)) -gt "$MAX_CONTEXT_CHARS" ]; then
+      context+=$'\n'
+      context+="---- CONTEXT LIMIT REACHED. Additional files skipped. ----"
+      context+=$'\n'
+      break
+    fi
+
+    context+=$'\n'
+    context+="---- FILE: ${file#$project_dir/} ----"
+    context+=$'\n'
+    context+="$(cat "$file")"
+    context+=$'\n'
+
+    total_chars=$((total_chars + file_size))
+  done < <(
+    find "$project_dir" -type f \
+      \( -iname "*.md" -o -iname "*.txt" -o -iname "*.fountain" -o -iname "*.screenplay" \) \
+      ! -path "*/.git/*" \
+      ! -path "*/node_modules/*" \
+      ! -path "*/vendor/*" \
+      -print0 | sort -z
+  )
+
+  echo "$context"
+  return 0
+}
+
+# -------- General chat mode --------
+
+general_chat() {
+  choose_model "$DEFAULT_GENERAL_MODEL"
+
+  echo
+  echo "Starting general chat with $MODEL"
+  echo "Type /bye to exit."
+  echo
+
+  ollama run "$MODEL"
+}
+
+# -------- Coding mode --------
+
+coding_chat() {
+  choose_model "$DEFAULT_CODE_MODEL"
+
+  echo
+  echo "Starting coding/config chat with $MODEL"
+  echo "Type /bye to exit."
+  echo
+
+  ollama run "$MODEL"
+}
+
+# -------- Project assistant mode --------
+
+project_chat() {
+  local project_name="$1"
+  local project_dir="$2"
+  local memory_file="$3"
+  local default_model="$4"
+
+mkdir -p "$project_dir"
+
+if [ ! -f "$memory_file" ]; then
+  printf '# Brinkchaser Session Memory\n\n' > "$memory_file"
+fi
+
+if [ ! -s "$memory_file" ]; then
+  printf '# Brinkchaser Session Memory\n\n' > "$memory_file"
+fi
+
+LAST_RESPONSE_FILE="/tmp/local-ai-last-response.txt"
+touch "$LAST_RESPONSE_FILE"
+
+  choose_model "$default_model"
+  
+  #---------- Commands ----------------
+
+  echo
+  echo "===================================="
+  echo "        $project_name Project AI"
+  echo "===================================="
+  echo
+  echo "Model: $MODEL"
+  echo "Project folder:"
+  echo "$project_dir"
+  echo
+  echo "Commands:"
+  echo "  /bye                 exit"
+  echo "  /remember text here  save a note to 99_SESSION_MEMORY.md"
+  echo "  /edit-last           edit the previous AI response before saving"
+  echo "  /save-last           save the previous AI response to memory"
+  echo "  /edit-memory         open the memory file in gedit"
+  echo "  /clear-memory        wipe the memory file after confirmation"
+  echo "  /files               list included project files"
+  echo "  /read-last           read the previous AI response aloud"
+  echo "  /read-memory         read the memory file aloud"
+  echo "  /shutup              stop read-aloud speech"
+  echo
+  echo "Important:"
+  echo "  The model does not directly browse files."
+  echo "  This script reads .md/.txt/.fountain files and prepends them to each question."
+  echo
+
+  while true; do
+    echo
+    read -r -p "$project_name > " QUESTION
+
+    if [[ "$QUESTION" == "/bye" ]]; then
+      echo "Goodbye."
+      break
+    fi
+
+    if [[ "$QUESTION" == "/files" ]]; then
+      echo
+      echo "Project files that can be included:"
+      find "$project_dir" -type f \
+        \( -iname "*.md" -o -iname "*.txt" -o -iname "*.fountain" -o -iname "*.screenplay" \) \
+        ! -path "*/.git/*" \
+        ! -path "*/node_modules/*" \
+        ! -path "*/vendor/*" \
+        | sort
+      continue
+    fi
+
+    if [[ "$QUESTION" == /remember* ]]; then
+      NOTE="${QUESTION#/remember }"
+      {
+        echo
+        echo "- $(date '+%Y-%m-%d %H:%M') — $NOTE"
+      } >> "$memory_file"
+      echo "Saved to:"
+      echo "$memory_file"
+      continue
+    fi
+    
+if [[ "$QUESTION" == "/edit-last" ]]; then
+  if [ ! -s "$LAST_RESPONSE_FILE" ]; then
+    echo "No previous AI response found to edit."
+  else
+    setsid -f gedit "$LAST_RESPONSE_FILE" >/dev/null 2>&1
+    echo "Previous AI response opened in gedit."
+    echo "After saving your edits, type /save-last to save the corrected version to memory."
+  fi
+  continue
+fi
+
+if [[ "$QUESTION" == "/edit-memory" ]]; then
+  mkdir -p "$(dirname "$memory_file")"
+
+  if [ ! -f "$memory_file" ] || [ ! -s "$memory_file" ]; then
+    printf '# Brinkchaser Session Memory\n\n' > "$memory_file"
+  fi
+
+  setsid -f gedit "$memory_file" >/dev/null 2>&1
+  echo "Memory file opened in gedit."
+  echo "Save your edits there; future questions will use the updated memory."
+  continue
+fi
+
+if [[ "$QUESTION" == "/clear-memory" ]]; then
+  echo "WARNING: This will erase:"
+  echo "$memory_file"
+  read -r -p "Type CLEAR to confirm: " confirm_clear
+
+  if [[ "$confirm_clear" == "CLEAR" ]]; then
+    printf '# Brinkchaser Session Memory\n\n' > "$memory_file"
+    echo "Memory cleared."
+  else
+    echo "Clear cancelled."
+  fi
+
+  continue
+fi
+
+if [[ "$QUESTION" == "/save-last" ]]; then
+  if [ ! -s "$LAST_RESPONSE_FILE" ]; then
+    echo "No previous AI response found to save."
+  else
+    {
+      echo
+      echo "## Saved AI Response — $(date '+%Y-%m-%d %H:%M')"
+      echo
+      cat "$LAST_RESPONSE_FILE"
+      echo
+    } >> "$memory_file"
+
+    echo "Previous AI response saved to:"
+    echo "$memory_file"
+  fi
+  continue
+fi
+	
+if [[ "$QUESTION" == "/read-last" ]]; then
+  if [ ! -s "$LAST_RESPONSE_FILE" ]; then
+    echo "No previous AI response found to read."
+  else
+    spd-say -l en-US -t male1 -r -20 "$(head -c 3000 "$LAST_RESPONSE_FILE")"
+    echo "Reading previous AI response aloud."
+  fi
+  continue
+fi
+
+if [[ "$QUESTION" == "/read-memory" ]]; then
+  if [ ! -s "$memory_file" ]; then
+    echo "Memory file is empty."
+  else
+    spd-say -l en-US -t male1 -r -20 "$(head -c 3000 "$memory_file")"
+    echo "Reading memory aloud."
+  fi
+  continue
+fi
+
+if [[ "$QUESTION" == "/shutup" ]]; then
+  spd-say -C
+  echo "Speech stopped."
+  continue
+fi
+
+    PROJECT_CONTEXT="$(build_project_context "$project_dir" "$project_name")"
+
+    PROMPT="$(
+      echo "You are a local assistant for the film/script project: $project_name."
+      echo
+      echo "Rules:"
+      echo "- Use only the supplied project context for project-specific answers."
+      echo "- Do not invent canon, scenes, characters, dates, dialogue, or plot facts."
+      echo "- If the answer is not found in the context, say: not found in supplied context."
+      echo "- If asked to write new material, clearly label it as draft/non-canon unless the user says otherwise."
+      echo "- Be concise, practical, and useful."
+      echo
+      echo "==== PROJECT CONTEXT START ===="
+      echo "$PROJECT_CONTEXT"
+      echo "==== PROJECT CONTEXT END ===="
+      echo
+      echo "User question:"
+      echo "$QUESTION"
+	    )"
+	ollama run "$MODEL" "$PROMPT" | tee "$LAST_RESPONSE_FILE"
+	  done
+	}
+	
+# -------- Guided screenplay adaptation from exact line range --------
+
+show_step_progress() {
+  local current="$1"
+  local total="$2"
+  local label="$3"
+
+  local percent=$((current * 100 / total))
+  local filled=$((percent / 10))
+  local empty=$((10 - filled))
+
+  local bar=""
+  local i
+
+  for ((i=0; i<filled; i++)); do
+    bar="${bar}#"
+  done
+
+  for ((i=0; i<empty; i++)); do
+    bar="${bar}_"
+  done
+
+  echo "[$bar] $percent% — $label"
+}
+
+show_activity_spinner() {
+  local pid="$1"
+  local label="$2"
+  local spinner='|/-\'
+  local i=0
+
+  while kill -0 "$pid" 2>/dev/null; do
+    i=$(( (i + 1) % 4 ))
+    printf "\r%s %s" "$label" "${spinner:$i:1}"
+    sleep 0.2
+  done
+
+  printf "\r%s done. \n" "$label"
+}
+
+adapt_line_range() {
+  local project_dir="$BRINKCHASER_DIR"
+  local default_source="beatsheet.txt"
+  local max_lines=120
+  local model="$DEFAULT_STORY_MODEL"
+
+  local source_input
+  local source_file
+  local start_line
+  local end_line
+  local line_count
+  local base_name
+  local default_out
+  local out_input
+  local out_file
+  local slice_file
+  local template_file
+
+template_file="$SCREENPLAY_TEMPLATE_FILE"
+
+  echo
+  echo "===================================="
+  echo " Guided Screenplay Scene Adaptation"
+  echo "===================================="
+  echo
+  echo "This tool uses Linux to extract exact lines first."
+  echo "The AI receives only that slice, not the full project."
+  echo
+  echo "Recommended max: $max_lines lines"
+  echo
+
+  read -r -p "Source file [$default_source]: " source_input
+  source_input="${source_input:-$default_source}"
+
+  if [[ "$source_input" = /* ]]; then
+    source_file="$source_input"
+  else
+    source_file="$project_dir/$source_input"
+  fi
+
+  if [ ! -f "$source_file" ]; then
+    echo
+    echo "ERROR: Source file not found:"
+    echo "$source_file"
+    return 1
+  fi
+
+  read -r -p "Start line: " start_line
+  read -r -p "End line: " end_line
+
+  if ! [[ "$start_line" =~ ^[0-9]+$ ]] || ! [[ "$end_line" =~ ^[0-9]+$ ]]; then
+    echo
+    echo "ERROR: Start and end lines must be numbers."
+    return 1
+  fi
+
+  if [ "$end_line" -lt "$start_line" ]; then
+    echo
+    echo "ERROR: End line must be greater than or equal to start line."
+    return 1
+  fi
+
+  line_count=$((end_line - start_line + 1))
+
+  if [ "$line_count" -gt "$max_lines" ]; then
+    echo
+    echo "ERROR: Too many lines selected."
+    echo "Selected lines: $line_count"
+    echo "Maximum allowed for accuracy: $max_lines"
+    echo
+    echo "Try a smaller range, for example:"
+    echo "$start_line to $((start_line + max_lines - 1))"
+    return 1
+  fi
+
+mkdir -p "$BRINKCHASER_EXTRACTIONS_DIR"
+mkdir -p "$BRINKCHASER_TEMPLATES_DIR"
+
+ if [ ! -f "$template_file" ]; then
+  cat > "$template_file" <<'EOF'
+# Screenplay Scene Adaptation Template
+
+For each adapted scene, use this exact format.
+
+SCENE [NUMBER]
+
+INT./EXT. [LOCATION] — [TIME OF DAY]
+
+SOURCE RANGE:
+[Source file and line range]
+
+SCENE PURPOSE:
+One plain sentence explaining what this scene does dramatically.
+
+SCREENPLAY SLUGLINE:
+INT./EXT. SPECIFIC LOCATION — DAY/NIGHT
+
+CHARACTERS PRESENT:
+- Character name — physically present
+
+CHARACTERS MENTIONED:
+- Character name — mentioned only, not physically present
+
+SOURCE DIALOGUE:
+Quote every exact line of dialogue found in the source slice.
+
+Format:
+CHARACTER NAME or SPEAKER UNKNOWN:
+"Exact dialogue line from source."
+
+Rules:
+- Preserve exact wording and punctuation.
+- Do not paraphrase.
+- Do not invent dialogue.
+- Do not merge separate dialogue lines.
+- If speaker identity is unclear, write SPEAKER UNKNOWN.
+- If no exact dialogue is present, write: No exact dialogue found.
+
+PROSE-TO-SCREEN ADAPTATION NOTES:
+Convert prose into screenplay action using industry-standard screenplay style.
+
+Rules:
+- Write in present tense.
+- Write only what can be seen or heard.
+- Be concise, visual, and matter-of-fact.
+- Prefer short action paragraphs of 1 to 3 lines.
+- Do not explain character psychology directly.
+- Do not include literary narration.
+- Do not include backstory unless it appears as visible behavior, dialogue, sound, object, setting, or action.
+- Convert internal thoughts into visible behavior: hesitation, silence, gesture, posture, eye movement, objects handled, spatial distance, interruption, physical routine, sound, or blocking.
+- Do not use phrases like “he feels,” “she remembers,” “he thinks,” or “we see.”
+- Do not add camera directions unless absolutely essential.
+- Do not invent new events.
+- If a beat cannot be filmed, compress it into the nearest visible action or mark it as uncertain.
+
+ADAPTED SCREENPLAY SCENE:
+Write the scene in standard screenplay style.
+
+Requirements:
+- Begin with a proper slugline.
+- Use lean action description.
+- Use character names above dialogue.
+- Include only actual dialogue lines from SOURCE DIALOGUE.
+- Do not create new dialogue.
+- Do not paraphrase source dialogue.
+- If no exact dialogue exists, write the scene as action only.
+- Keep the tone grounded, restrained, cinematic, and practical.
+
+NOTES ON ADAPTATION:
+- What was preserved from the source.
+- What was compressed.
+- What was converted from internal prose into visible action.
+- What remains uncertain.
+
+CONFIDENCE:
+Explicit / Derived / Unclear
+EOF
+fi
+
+  base_name="$(basename "$source_file")"
+  base_name="${base_name%.*}"
+
+  default_out="SCENE_ADAPTATION_${base_name}_LINES_${start_line}_${end_line}.md"
+
+  echo
+  read -r -p "Export filename [$default_out]: " out_input
+  out_input="${out_input:-$default_out}"
+
+  if [[ "$out_input" = /* ]]; then
+    out_file="$out_input"
+  else
+    out_file="$BRINKCHASER_EXTRACTIONS_DIR/$out_input"
+  fi
+  
+  if [ -f "$out_file" ]; then
+  echo
+  echo "WARNING: Output file already exists:"
+  echo "$out_file"
+  read -r -p "Overwrite it? [y/N]: " overwrite_choice
+
+  if ! [[ "$overwrite_choice" =~ ^[Yy]$ ]]; then
+    echo "Cancelled. No file was overwritten."
+    return 1
+  fi
+fi
+
+slice_file="$BRINKCHASER_EXTRACTIONS_DIR/${base_name}_LINES_${start_line}_${end_line}_ONLY.txt"
+
+if [ -f "$slice_file" ]; then
+  echo
+  echo "Note: Exact slice file already exists and will be replaced:"
+  echo "$slice_file"
+fi
+
+sed -n "${start_line},${end_line}p" "$source_file" > "$slice_file"
+
+  echo
+  echo "Exact source slice created:"
+  echo "$slice_file"
+  echo
+  echo "Slice line count:"
+  wc -l "$slice_file"
+  echo
+  echo "First 3 lines:"
+  head -3 "$slice_file"
+  echo
+  echo "Last 3 lines:"
+  tail -3 "$slice_file"
+  echo
+  echo "Running model: $model"
+  echo "Output:"
+  echo "$out_file"
+  echo
+
+show_step_progress 4 5 "Ollama generating output — this may take a few minutes"
+
+tmp_out="/tmp/local-ai-ollama-output.txt"
+
+{
+  echo "You are a professional screenplay adaptation assistant."
+  echo
+  echo "Use ONLY the source text included below. Do not use any other file, project memory, or prior knowledge."
+  echo
+  echo "Your job is to adapt the selected prose/beats into professional screenplay scene cards."
+  echo "Do not summarize the source as prose. Convert it into filmable scenes."
+  echo
+  echo "TEMPLATE TO FOLLOW:"
+  echo "==================="
+  cat "$template_file"
+  echo
+  echo "SOURCE TEXT: $base_name lines $start_line-$end_line only"
+  echo "=============================================="
+  cat "$slice_file"
+  echo
+  echo "TASK:"
+  echo "Adapt this exact source slice into screenplay scene cards using the template."
+  echo
+  echo "Before writing the adapted scene, identify and quote every exact dialogue line from the source slice."
+  echo
+  echo "Scene splitting rules:"
+  echo "- Create as many separate scenes as the selected source slice supports."
+  echo "- Do not compress different locations, times, dramatic beats, or character groupings into one scene."
+  echo "- Split scenes when location, time, dramatic beat, or character grouping changes."
+  echo "- If the selected slice contains only one scene, create one scene."
+  echo
+  echo "Screenplay style rules:"
+  echo "- Use present tense."
+  echo "- Write concise, matter-of-fact action."
+  echo "- Write only what can be seen or heard."
+  echo "- Convert internal prose into visible action, silence, behavior, sound, object, or blocking."
+  echo "- Avoid literary narration."
+  echo "- Avoid explaining psychology directly."
+  echo "- Do not use camera directions unless essential."
+  echo
+  echo "Strict source rules:"
+  echo "- Use plain ASCII punctuation only: hyphen instead of em dash, straight quotes instead of curly quotes."
+  echo "- Use only the source text included above."
+  echo "- Do not invent plot, characters, locations, timestamps, or dialogue."
+  echo "- Include actual dialogue lines exactly as written in the source."
+  echo "- Do not paraphrase dialogue."
+  echo "- If speaker identity is unclear, write SPEAKER UNKNOWN."
+  echo "- If location or time is missing, write unknown."
+  echo "- Keep scenes in source order."
+  echo "- Preserve the grounded, restrained, 1980s analog realism tone."
+} | ollama run "$model" > "$tmp_out" 2>/tmp/local-ai-ollama-status.log &
+
+ai_pid=$!
+show_activity_spinner "$ai_pid" "Ollama working"
+wait "$ai_pid"
+ai_status=$?
+
+perl -CS -pe 's/\x1b\[[0-9;?]*[ -\/]*[@-~]//g; s/\r//g' "$tmp_out" > "$out_file"
+
+python3 - "$tmp_out" "$out_file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+dst = Path(sys.argv[2])
+
+text = src.read_text(errors="replace")
+
+replacements = {
+    "â€”": "-",
+    "â€“": "-",
+    "â€˜": "'",
+    "â€™": "'",
+    "â€œ": '"',
+    "â€�": '"',
+    "â€¦": "...",
+    "—": "-",
+    "–": "-",
+    "‘": "'",
+    "’": "'",
+    "“": '"',
+    "”": '"',
+    "…": "...",
+}
+
+for bad, good in replacements.items():
+    text = text.replace(bad, good)
+
+text = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", text)
+text = text.replace("\r", "")
+
+dst.write_text(text)
+PY
+
+echo
+
+if [ "$ai_status" -ne 0 ]; then
+  echo
+  echo "ERROR: Ollama failed."
+  echo "Check log:"
+  echo "/tmp/local-ai-ollama-status.log"
+  return 1
+fi
+
+if [ ! -s "$out_file" ]; then
+  echo
+  echo "ERROR: Output file was created but is empty:"
+  echo "$out_file"
+  return 1
+fi
+
+show_step_progress 5 5 "Complete"
+
+echo
+echo "SUCCESS: Screenplay adaptation complete."
+echo
+echo "Source file:"
+echo "$source_file"
+echo
+echo "Exact slice:"
+echo "$slice_file"
+echo
+echo "Output file:"
+echo "$out_file"
+echo
+
+read -r -p "Open output in gedit? [Y/n]: " open_choice
+open_choice="${open_choice:-Y}"
+
+if [[ "$open_choice" =~ ^[Yy]$ ]]; then
+  setsid -f gedit "$out_file" >/dev/null 2>&1
+fi
+
+echo
+echo "What next?"
+echo "1) Do another line range"
+echo "2) Return to main menu"
+echo "3) Exit"
+echo
+
+read -r -p "Enter choice [1-3]: " next_choice
+
+case "$next_choice" in
+  1)
+    adapt_line_range
+    ;;
+  2)
+    main_menu
+    ;;
+  3)
+    echo "Goodbye."
+    exit 0
+    ;;
+  *)
+    echo "Returning to main menu."
+    main_menu
+    ;;
+esac
+}
+
+# -------- Main menu --------
+
+main_menu() {
+  echo
+  echo "What do you want to work on?"
+  echo
+  echo "1) General local AI chat"
+  echo "2) Brinkchaser project assistant"
+  echo "3) Coding / config assistant"
+  echo "4) Adapt exact screenplay line range"
+  echo "5) Exit"
+  echo
+
+  read -r -p "Enter choice [1-5]: " main_choice
+
+  case "$main_choice" in
+    1)
+      general_chat
+      ;;
+    2)
+      project_chat "Brinkchaser" "$BRINKCHASER_DIR" "$BRINKCHASER_MEMORY" "$DEFAULT_STORY_MODEL"
+      ;;
+    3)
+      coding_chat
+      ;;
+    4)
+      adapt_line_range
+      ;;
+    5)
+      echo "Goodbye."
+      exit 0
+      ;;
+    *)
+      echo "Invalid choice. Returning to main menu."
+      main_menu
+      ;;
+  esac
+}
+
+main_menu
