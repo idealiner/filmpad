@@ -359,8 +359,19 @@ class FilmPad:
         self.root.bind("<F7>", lambda _e: self._check_spelling())
 
     def _build_local_ai_workspace(self) -> None:
-        sidebar = ttk.Frame(self.local_ai_tab, padding=(10, 10))
-        sidebar.pack(side="left", fill="y")
+        sidebar_outer = ttk.Frame(self.local_ai_tab)
+        sidebar_outer.pack(side="left", fill="y")
+
+        toggle_row = ttk.Frame(sidebar_outer)
+        toggle_row.pack(side="top", fill="x")
+        self._sidebar_toggle_btn = ttk.Button(
+            toggle_row, text="◀", width=3, command=self._toggle_local_ai_sidebar
+        )
+        self._sidebar_toggle_btn.pack(side="right", padx=(0, 4), pady=4)
+
+        self._sidebar_content = ttk.Frame(sidebar_outer, padding=(10, 4, 10, 10))
+        self._sidebar_content.pack(side="top", fill="y", expand=True)
+        sidebar = self._sidebar_content
 
         main_area = ttk.Frame(self.local_ai_tab, padding=(0, 10, 10, 10))
         main_area.pack(side="left", fill="both", expand=True)
@@ -526,6 +537,14 @@ class FilmPad:
                 self.local_ai_result_text.yview_moveto(float(first))
             finally:
                 self._local_ai_syncing_scroll = False
+
+    def _toggle_local_ai_sidebar(self) -> None:
+        if self._sidebar_content.winfo_ismapped():
+            self._sidebar_content.pack_forget()
+            self._sidebar_toggle_btn.configure(text="▶")
+        else:
+            self._sidebar_content.pack(side="top", fill="y", expand=True)
+            self._sidebar_toggle_btn.configure(text="◀")
 
     def _canvas_y_to_source_line(self, canvas_y: int) -> int:
         """Map a canvas gutter y pixel to the logical line number in source text."""
@@ -805,8 +824,8 @@ class FilmPad:
     def _build_local_ai_prompt(self, source_name: str, start_line: int, end_line: int, slice_text: str) -> str:
         template_text = self._load_adaptation_template()
         return (
-            "You are a professional screenplay scene adapter.\n"
-            "Use ONLY the source text below. Do not use memory or prior knowledge.\n\n"
+            "You are a professional screenplay scene adapter. "
+            "Use ONLY the source text below. Do not use memory, prior knowledge, or invention.\n\n"
             "TEMPLATE:\n"
             "=========\n"
             f"{template_text}\n\n"
@@ -814,14 +833,43 @@ class FilmPad:
             "=======================================================\n"
             f"{slice_text}\n\n"
             "TASK:\n"
-            "Convert the source text into screenplay scene cards.\n\n"
-            "CRITICAL RULES:\n"
-            "- Any dialogue used must match the source exactly.\n"
-            "- Do not invent characters, places, actions, timestamps, or dialogue.\n"
-            "- Keep dialogue in the scene where it appears.\n"
-            "- If location/time is unclear, write unknown.\n"
-            "- Preserve concrete visual/audio cues as action lines.\n"
-            "- Use plain ASCII punctuation.\n"
+            "Convert the source text into one or more screenplay scene cards using the template above.\n\n"
+            "OUTPUT FORMAT RULES (follow exactly):\n"
+            "\n"
+            "1. LOCATION field:\n"
+            "   - Use the location stated or clearly implied in the source.\n"
+            "   - If the location is genuinely unknowable, write: UNKNOWN\n"
+            "   - NEVER write: Unknown (place name). Either use the place or write UNKNOWN.\n"
+            "\n"
+            "2. SOURCE DIALOGUE INSIDE THIS SCENE:\n"
+            "   - Include only spoken lines, direct quotes, or inner quoted thoughts from the source.\n"
+            "   - Copy them word for word. Do not paraphrase.\n"
+            "   - Do not include narration or description here.\n"
+            "\n"
+            "3. ADAPTED SCREENPLAY SCENE formatting:\n"
+            "   - Begin with a slug line: INT./EXT. LOCATION - DAY/NIGHT\n"
+            "   - Action lines: left margin, present tense, one sentence per line, \n"
+            "     describe only what can be seen or heard.\n"
+            "   - Every spoken line MUST appear like this:\n"
+            "\n"
+            "         CHARACTER NAME\n"
+            "         Exact dialogue copied from source.\n"
+            "\n"
+            "   - CHARACTER NAME must be in ALL CAPS on its own line above every dialogue line.\n"
+            "   - NEVER omit the character name before a dialogue line.\n"
+            "   - NEVER write 'NO EXACT DIALOGUE FOUND' if SOURCE DIALOGUE has content.\n"
+            "   - If a character name is genuinely unknown, write: UNKNOWN SPEAKER\n"
+            "   - Do NOT add parentheticals like (quietly), (feigning calm) unless the source\n"
+            "     explicitly states that exact tone or manner in those words.\n"
+            "   - Do NOT describe psychology, motivation, subtext, or emotion unless it is\n"
+            "     physically visible or explicitly stated in the source.\n"
+            "   - Preserve concrete cues: weather, objects, posture, sound, silence, gesture.\n"
+            "   - Do NOT wrap lines mid-word. Write each sentence on one complete line.\n"
+            "   - Use plain ASCII punctuation only.\n"
+            "\n"
+            "4. NOTES field:\n"
+            "   - Reference only what actually changed in this output.\n"
+            "   - Do not invent examples not present in the source range.\n"
         )
 
     def _show_progress_overlay(self, source_name: str, start_line: int, end_line: int, model: str) -> None:
@@ -830,7 +878,6 @@ class FilmPad:
         win.title("Generating…")
         win.resizable(False, False)
         win.transient(self.root)
-        win.grab_set()
         win.protocol("WM_DELETE_WINDOW", lambda: None)  # Block manual close
 
         self.root.update_idletasks()
@@ -880,7 +927,6 @@ class FilmPad:
     def _close_progress_overlay(self) -> None:
         if self._progress_win and self._progress_win.winfo_exists():
             self._progress_bar.stop()
-            self._progress_win.grab_release()
             self._progress_win.destroy()
         self._progress_win = None
 
@@ -919,6 +965,14 @@ class FilmPad:
             cleaned = cleaned.replace(bad, good)
         cleaned = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", cleaned)
         cleaned = cleaned.replace("\r", "")
+        # Repair line-wrap artifacts where a word was split mid-word by the terminal,
+        # e.g. "fr\nfrom Bronxville" -> "from Bronxville"
+        def _rejoin_split_words(m: re.Match) -> str:
+            first, second = m.group(1), m.group(2)
+            if second.startswith(first):
+                return second
+            return first + second
+        cleaned = re.sub(r"(\b\w{1,4})\n(\1\w+)", _rejoin_split_words, cleaned)
         return cleaned.strip("\n") + "\n"
 
     def _generate_local_ai_adaptation(self) -> None:
@@ -985,6 +1039,8 @@ class FilmPad:
         self.root.after(200, lambda: self._update_progress_step(2, f"Running Ollama — {model}"))
 
     def _run_local_ai_generation(self, model: str, prompt: str) -> None:
+        import os
+        env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
         try:
             self._ollama_process = subprocess.Popen(
                 ["ollama", "run", model],
@@ -992,6 +1048,7 @@ class FilmPad:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                env=env,
             )
             stdout, stderr = self._ollama_process.communicate(input=prompt, timeout=900)
             returncode = self._ollama_process.returncode
