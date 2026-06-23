@@ -45,6 +45,25 @@ LOCAL_AI_MODELS = [
     "qwen2.5-coder:7b",
 ]
 
+LIGHT_COLORS = {
+    "text_bg": "white",       "text_fg": "black",        "insert": "black",
+    "sel_bg": "#4a90d9",     "sel_fg": "white",
+    "gutter_bg": "#f0f0f0",  "gutter_fg": "#666666",
+    "result_hl": "#fff2b3",  "source_hl": "#d9ebff",
+    "spell_fg": "#cc0000",   "status_fg": "#555555",
+    "ttk_bg": "#f0f0f0",     "ttk_fg": "#000000",
+    "entry_bg": "white",
+}
+DARK_COLORS = {
+    "text_bg": "#1e1e1e",    "text_fg": "#d4d4d4",      "insert": "#d4d4d4",
+    "sel_bg": "#264f78",     "sel_fg": "#ffffff",
+    "gutter_bg": "#252526",  "gutter_fg": "#858585",
+    "result_hl": "#3a3a00",  "source_hl": "#1a3550",
+    "spell_fg": "#f48771",   "status_fg": "#aaaaaa",
+    "ttk_bg": "#2b2b2b",     "ttk_fg": "#d4d4d4",
+    "entry_bg": "#3c3c3c",
+}
+
 
 class FilmPad:
     def __init__(self, root: tk.Tk) -> None:
@@ -52,6 +71,8 @@ class FilmPad:
         self.root.title("FilmPad")
         self.root.geometry("900x600")
         self.icon_image = None
+        self._dark_mode = False
+        self._last_comparison: dict | None = None  # {original, proposed, sel_start, sel_end}
         self.available_fonts = self._available_screenplay_fonts()
         self.font_var = tk.StringVar(value=self.available_fonts[0])
         self.format_var = tk.StringVar(value="Action")
@@ -175,6 +196,157 @@ class FilmPad:
             command=self._stop_read_aloud,
         ).pack(side="left", padx=(6, 0))
 
+        ttk.Separator(self.toolbar, orient="vertical").pack(side="right", fill="y", padx=(10, 14))
+        self._theme_btn = ttk.Button(
+            self.toolbar, text="\U0001f319 Dark", width=8, command=self._toggle_dark_mode
+        )
+        self._theme_btn.pack(side="right")
+
+    def _toggle_dark_mode(self) -> None:
+        self._dark_mode = not self._dark_mode
+        self._apply_theme()
+        self._theme_btn.configure(text="\u2600 Light" if self._dark_mode else "\U0001f319 Dark")
+
+    def _apply_theme(self) -> None:
+        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        bd = c["entry_bg"]   # border colour used everywhere
+
+        # --- ttk styles ---
+        style = ttk.Style()
+        style.theme_use("clam")
+        # Global defaults: affects every widget that doesn't override
+        style.configure(".",
+            background=c["ttk_bg"], foreground=c["ttk_fg"],
+            fieldbackground=c["entry_bg"], troughcolor=c["gutter_bg"],
+            selectbackground=c["sel_bg"], selectforeground=c["sel_fg"],
+            bordercolor=bd, darkcolor=bd, lightcolor=bd,
+            relief="flat", borderwidth=1,
+        )
+        style.configure("TFrame", background=c["ttk_bg"], borderwidth=0, relief="flat")
+        style.configure("TLabel", background=c["ttk_bg"], foreground=c["ttk_fg"])
+        style.configure("TButton",
+            background=c["ttk_bg"], foreground=c["ttk_fg"],
+            bordercolor=bd, darkcolor=bd, lightcolor=bd,
+            relief="flat", borderwidth=1, padding=(4, 2),
+        )
+        style.map("TButton",
+            background=[("active", c["entry_bg"]), ("pressed", c["sel_bg"])],
+            foreground=[("active", c["ttk_fg"])],
+            bordercolor=[("active", bd), ("pressed", c["sel_bg"])],
+            darkcolor=[("active", bd)], lightcolor=[("active", bd)],
+        )
+        style.configure("TEntry",
+            fieldbackground=c["entry_bg"], foreground=c["ttk_fg"],
+            bordercolor=bd, darkcolor=bd, lightcolor=bd,
+            insertcolor=c["insert"],
+        )
+        style.configure("TCombobox",
+            fieldbackground=c["entry_bg"], foreground=c["ttk_fg"],
+            selectbackground=c["sel_bg"], selectforeground=c["sel_fg"],
+            bordercolor=bd, darkcolor=bd, lightcolor=bd,
+            arrowcolor=c["ttk_fg"],
+        )
+        style.map("TCombobox",
+            fieldbackground=[("readonly", c["entry_bg"])],
+            bordercolor=[("focus", bd), ("!focus", bd)],
+        )
+        style.configure("TNotebook",
+            background=c["ttk_bg"], bordercolor=bd,
+            darkcolor=c["ttk_bg"], lightcolor=c["ttk_bg"],
+            tabmargins=(0, 0, 0, 0),
+        )
+        style.configure("TNotebook.Tab",
+            background=c["ttk_bg"], foreground=c["ttk_fg"], padding=(10, 4),
+            bordercolor=bd, darkcolor=c["ttk_bg"], lightcolor=c["ttk_bg"],
+        )
+        style.map("TNotebook.Tab",
+            background=[("selected", c["text_bg"])],
+            foreground=[("selected", c["text_fg"])],
+            bordercolor=[("selected", bd)],
+            darkcolor=[("selected", c["text_bg"])],
+            lightcolor=[("selected", c["text_bg"])],
+        )
+        style.configure("TSeparator", background=bd)
+        style.configure("Vertical.TScrollbar",
+            background=c["entry_bg"], troughcolor=c["gutter_bg"],
+            bordercolor=c["gutter_bg"], darkcolor=c["gutter_bg"], lightcolor=c["gutter_bg"],
+            arrowcolor=c["ttk_fg"], relief="flat", borderwidth=0,
+        )
+        style.map("Vertical.TScrollbar",
+            background=[("active", c["sel_bg"])],
+        )
+        style.configure("TProgressbar",
+            background=c["sel_bg"], troughcolor=c["entry_bg"],
+            bordercolor=c["entry_bg"],
+        )
+        # Remove the highlight ring on the root and toolbar
+        self.root.configure(bg=c["ttk_bg"],
+            highlightbackground=c["ttk_bg"], highlightcolor=c["ttk_bg"],
+            highlightthickness=0)
+        self.toolbar.configure(style="TFrame")
+
+        # --- tk.Text widgets ---
+        text_opts = dict(
+            background=c["text_bg"], foreground=c["text_fg"],
+            insertbackground=c["insert"],
+            selectbackground=c["sel_bg"], selectforeground=c["sel_fg"],
+            highlightbackground=c["ttk_bg"], highlightcolor=c["sel_bg"],
+            highlightthickness=1 if self._dark_mode else 0,
+            borderwidth=0, relief="flat",
+        )
+        for widget in [self.text, self.writer_ai_prompt_text]:
+            widget.configure(**text_opts)
+        if hasattr(self, "local_ai_result_text"):
+            self.local_ai_result_text.configure(**text_opts)
+            self.local_ai_result_text.tag_configure(
+                LOCAL_AI_RESULT_HIGHLIGHT_TAG, background=c["result_hl"])
+        if hasattr(self, "local_ai_source_text"):
+            self.local_ai_source_text.configure(**text_opts)
+            self.local_ai_source_text.tag_configure(
+                LOCAL_AI_SOURCE_RANGE_TAG, background=c["source_hl"])
+        if hasattr(self, "local_ai_result_line_canvas"):
+            self.local_ai_result_line_canvas.configure(bg=c["gutter_bg"])
+        if hasattr(self, "local_ai_line_canvas"):
+            self.local_ai_line_canvas.configure(bg=c["gutter_bg"])
+
+        # --- classic tk.Scrollbar widgets (don't respond to ttk style) ---
+        sb_opts = dict(
+            bg=c["entry_bg"], troughcolor=c["gutter_bg"],
+            activebackground=c["sel_bg"],
+            highlightbackground=c["ttk_bg"], highlightcolor=c["ttk_bg"],
+            highlightthickness=0, borderwidth=0, relief="flat",
+            elementborderwidth=0,
+        )
+        classic_scrollbars = [self.scroll]
+        for attr in ("writer_ai_prompt_scroll", "local_ai_result_scroll", "local_ai_source_scroll"):
+            if hasattr(self, attr):
+                classic_scrollbars.append(getattr(self, attr))
+        for sb in classic_scrollbars:
+            try:
+                sb.configure(**sb_opts)
+            except Exception:
+                pass
+
+        # --- menus (classic tk, don't respond to ttk style) ---
+        menu_opts = dict(
+            bg=c["ttk_bg"], fg=c["ttk_fg"],
+            activebackground=c["sel_bg"], activeforeground=c["sel_fg"],
+            disabledforeground=c["gutter_fg"],
+            borderwidth=0, relief="flat",
+        )
+        for menu_attr in ("_menu_bar", "_file_menu", "_format_menu", "_font_menu", "_screenplay_menu"):
+            if hasattr(self, menu_attr):
+                try:
+                    getattr(self, menu_attr).configure(**menu_opts)
+                except Exception:
+                    pass
+
+        # --- toolbar highlight borders ---
+        self.toolbar.configure(style="Dark.TFrame" if self._dark_mode else "TFrame")
+        style.configure("Dark.TFrame", background=c["ttk_bg"])
+
+        self._configure_screenplay_tags()
+
     def _on_font_selected(self, _event: tk.Event) -> None:
         self.screenplay_font.configure(family=self.font_var.get(), size=11)
         self._configure_screenplay_tags()
@@ -246,7 +418,8 @@ class FilmPad:
             justify="left",
         )
         # Spell-check highlight -- red underline, lowest priority
-        widget.tag_configure(SPELL_TAG, underline=True, foreground="#cc0000")
+        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        widget.tag_configure(SPELL_TAG, underline=True, foreground=c["spell_fg"])
         widget.tag_lower(SPELL_TAG)
 
     def _configure_screenplay_tags(self) -> None:
@@ -337,8 +510,10 @@ class FilmPad:
 
     def _build_menu(self) -> None:
         menu_bar = tk.Menu(self.root)
+        self._menu_bar = menu_bar
 
         file_menu = tk.Menu(menu_bar, tearoff=0)
+        self._file_menu = file_menu
         file_menu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
         file_menu.add_command(label="Open...", command=self.open_file, accelerator="Ctrl+O")
         file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
@@ -347,8 +522,10 @@ class FilmPad:
         file_menu.add_command(label="Exit", command=self.on_exit)
 
         format_menu = tk.Menu(menu_bar, tearoff=0)
+        self._format_menu = format_menu
 
         font_menu = tk.Menu(format_menu, tearoff=0)
+        self._font_menu = font_menu
         for font_name in self.available_fonts:
             font_menu.add_radiobutton(
                 label=font_name,
@@ -358,6 +535,7 @@ class FilmPad:
             )
 
         screenplay_menu = tk.Menu(format_menu, tearoff=0)
+        self._screenplay_menu = screenplay_menu
         for format_name in SCREENPLAY_FORMATS:
             screenplay_menu.add_command(
                 label=format_name,
@@ -433,6 +611,7 @@ class FilmPad:
             prompt_frame, width=30, height=8, wrap="word", padx=6, pady=6
         )
         prompt_scroll = tk.Scrollbar(prompt_frame, command=self.writer_ai_prompt_text.yview)
+        self.writer_ai_prompt_scroll = prompt_scroll
         self.writer_ai_prompt_text.configure(yscrollcommand=prompt_scroll.set)
         prompt_scroll.pack(side="right", fill="y")
         self.writer_ai_prompt_text.pack(side="left", fill="both", expand=True)
@@ -444,6 +623,10 @@ class FilmPad:
         ).pack(fill="x", pady=(2, 0))
         ttk.Button(
             self._writer_ai_content, text="Edit Selection", command=self._run_writer_ai_edit
+        ).pack(fill="x", pady=(4, 0))
+        ttk.Button(
+            self._writer_ai_content, text="\u25a7 Review Last Output",
+            command=self._show_writer_ai_comparison,
         ).pack(fill="x", pady=(4, 0))
         ttk.Button(
             self._writer_ai_content, text="Save", command=self.save_file
@@ -580,19 +763,128 @@ class FilmPad:
             self.writer_ai_status_var.set("Error or no output from model.")
             return
         cleaned = self._sanitize_local_ai_output(output).strip()
+        # Capture the original text for side-by-side review before any replacement
         if self._writer_ai_sel_start and self._writer_ai_sel_end:
-            self.text.delete(self._writer_ai_sel_start, self._writer_ai_sel_end)
-            self.text.insert(self._writer_ai_sel_start, cleaned)
+            original = self.text.get(self._writer_ai_sel_start, self._writer_ai_sel_end)
         else:
-            self.text.insert(tk.END, "\n" + cleaned)
-        self.writer_ai_status_var.set("Done. Review changes.")
+            original = self.text.get("1.0", "end-1c")
+        self._last_comparison = {
+            "original": original,
+            "proposed": cleaned,
+            "sel_start": self._writer_ai_sel_start,
+            "sel_end": self._writer_ai_sel_end,
+        }
+        self.writer_ai_status_var.set("Done. Review in comparison pane.")
+        self._show_writer_ai_comparison()
+
+    def _show_writer_ai_comparison(self) -> None:
+        """Open (or re-open) the side-by-side original vs proposed comparison window."""
+        data = self._last_comparison
+        if not data:
+            self.writer_ai_status_var.set("No output to review yet.")
+            return
+        # Bring existing window to front if already open
+        if hasattr(self, "_cmp_win") and self._cmp_win and self._cmp_win.winfo_exists():
+            self._cmp_win.lift()
+            self._cmp_win.focus_force()
+            return
+        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        win = tk.Toplevel(self.root)
+        self._cmp_win = win
+        win.title("Review \u2014 Original vs Proposed")
+        win.transient(self.root)
+        self.root.update_idletasks()
+        w, h = 1000, 600
+        rx = self.root.winfo_rootx() + self.root.winfo_width() // 2 - w // 2
+        ry = self.root.winfo_rooty() + self.root.winfo_height() // 2 - h // 2
+        win.geometry(f"{w}x{h}+{rx}+{ry}")
+        win.configure(bg=c["ttk_bg"])
+
+        header = tk.Frame(win, bg=c["ttk_bg"])
+        header.pack(fill="x", padx=10, pady=(8, 0))
+        tk.Label(header, text="Original  (read-only)",
+                 font=("TkDefaultFont", 10, "bold"),
+                 bg=c["ttk_bg"], fg=c["ttk_fg"]).pack(side="left", padx=(0, 0))
+        tk.Label(header, text="Proposed  (editable before accepting)",
+                 font=("TkDefaultFont", 10, "bold"),
+                 bg=c["ttk_bg"], fg=c["ttk_fg"]).pack(side="right", padx=(0, 10))
+
+        pane = tk.PanedWindow(win, orient="horizontal",
+                              bg=c["ttk_bg"], sashrelief="flat", sashwidth=6)
+        pane.pack(fill="both", expand=True, padx=10, pady=(4, 0))
+
+        text_opts = dict(
+            wrap="word", font=self.screenplay_font, padx=10, pady=10,
+            background=c["text_bg"], foreground=c["text_fg"],
+            insertbackground=c["insert"],
+            selectbackground=c["sel_bg"], selectforeground=c["sel_fg"],
+        )
+        orig_frame = tk.Frame(pane, bg=c["ttk_bg"])
+        orig_text = tk.Text(orig_frame, state="normal", **text_opts)
+        orig_scroll = tk.Scrollbar(orig_frame, command=orig_text.yview)
+        orig_text.configure(yscrollcommand=orig_scroll.set)
+        orig_scroll.pack(side="right", fill="y")
+        orig_text.pack(fill="both", expand=True)
+        orig_text.insert("1.0", data["original"])
+        orig_text.configure(state="disabled")
+        pane.add(orig_frame, stretch="always")
+
+        prop_frame = tk.Frame(pane, bg=c["ttk_bg"])
+        prop_text = tk.Text(prop_frame, **text_opts)
+        prop_scroll = tk.Scrollbar(prop_frame, command=prop_text.yview)
+        prop_text.configure(yscrollcommand=prop_scroll.set)
+        prop_scroll.pack(side="right", fill="y")
+        prop_text.pack(fill="both", expand=True)
+        prop_text.insert("1.0", data["proposed"])
+        pane.add(prop_frame, stretch="always")
+        self._cmp_prop_text = prop_text
+
+        btn_bar = tk.Frame(win, bg=c["ttk_bg"])
+        btn_bar.pack(fill="x", padx=10, pady=8)
+        tk.Label(btn_bar,
+                 text="Edit the right pane freely, then Accept to replace the selection in the editor.",
+                 bg=c["ttk_bg"], fg=c["status_fg"]).pack(side="left")
+
+        def _accept() -> None:
+            new_text = prop_text.get("1.0", "end-1c")
+            sel_start = data["sel_start"]
+            sel_end = data["sel_end"]
+            if sel_start and sel_end:
+                try:
+                    self.text.delete(sel_start, sel_end)
+                    self.text.insert(sel_start, new_text)
+                except tk.TclError:
+                    self.text.insert(tk.END, "\n" + new_text)
+            else:
+                self.text.insert(tk.END, "\n" + new_text)
+            self.writer_ai_status_var.set("Changes accepted.")
+            win.destroy()
+
+        def _discard() -> None:
+            self.writer_ai_status_var.set("Changes discarded.")
+            win.destroy()
+
+        tk.Button(btn_bar, text="Discard", width=12, command=_discard,
+                  bg=c["entry_bg"], fg=c["ttk_fg"], relief="flat",
+                  activebackground=c["sel_bg"]).pack(side="right", padx=(6, 0))
+        tk.Button(btn_bar, text="Accept Changes", width=16, command=_accept,
+                  bg="#0e639c", fg="white", relief="flat",
+                  activebackground="#1177bb").pack(side="right")
 
     def _transcribe_to_script_format(self) -> None:
         default_prompt = (
-            "Convert the selected text into properly formatted screenplay scenes. "
-            "Apply correct slug lines (INT./EXT. LOCATION - DAY/NIGHT), action lines in present tense, "
-            "character names in ALL CAPS before each dialogue line, and standard dialogue formatting. "
-            "Preserve ALL content exactly - do not add, remove, or change any events, characters, or dialogue."
+            "Convert the selected text into properly formatted screenplay scenes.\n\n"
+            "VERBATIM RULE (highest priority): Every word spoken by a character — "
+            "anything in quotation marks, or clearly identifiable as speech — MUST be "
+            "preserved letter-for-letter. Do NOT paraphrase, summarise, condense, or "
+            "alter any spoken word in any way. Copy dialogue exactly as written, including "
+            "all punctuation inside the quotes.\n\n"
+            "Formatting rules:\n"
+            "- Slug lines: INT./EXT. LOCATION - DAY/NIGHT\n"
+            "- Action lines: present tense, third person\n"
+            "- Character names: ALL CAPS on their own line before dialogue\n"
+            "- Parentheticals: only when written in the source; never invented\n"
+            "- Do not add, remove, or merge scenes — keep every scene that exists in the source."
         )
         self.writer_ai_prompt_text.delete("1.0", tk.END)
         self.writer_ai_prompt_text.insert("1.0", default_prompt)
@@ -1705,6 +1997,10 @@ def main() -> None:
     root = tk.Tk(className="Filmpad")  # WM_CLASS class = Filmpad, matches StartupWMClass in .desktop
     app = FilmPad(root)
     app._set_title()
+    # Start in dark mode by default
+    app._dark_mode = True
+    app._apply_theme()
+    app._theme_btn.configure(text="\u2600 Light")
     root.protocol("WM_DELETE_WINDOW", app.on_exit)
     root.mainloop()
 
