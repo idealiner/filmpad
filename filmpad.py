@@ -312,103 +312,28 @@ class FilmPad:
         return "\n".join(formatted_lines)
 
     def _set_window_icon(self) -> None:
-        # Install icon into the user's local icon theme so Plank/docks find it by name
-        self._install_icon_for_desktop()
-        # Supply multiple sizes so X11/Plank picks the right one without resampling
+        # Icons and .desktop file are already installed by _install_icons_early()
+        # in main() before tk.Tk() was called.  Just set the window property here.
+        # Only pass the 256px image so _NET_WM_ICON always has the high-res version
+        # — avoids Plank picking a 48px thumbnail and upscaling it.
         self.icon_images: list[tk.PhotoImage] = []
-        for name in ("filmpad-icon-256.png", "filmpad-icon-48.png", "filmpad-icon.png"):
+        for name in ("filmpad-icon-256.png", "filmpad-icon.png"):
             icon_path = resource_path(f"assets/{name}")
             if icon_path.exists():
                 try:
                     self.icon_images.append(tk.PhotoImage(file=icon_path))
+                    break  # only need one large image
                 except tk.TclError:
                     continue
         if self.icon_images:
             self.root.iconphoto(True, *self.icon_images)
 
     def _install_icon_for_desktop(self) -> None:
-        """Install icons and a .desktop file so Plank/docks find them reliably.
-        Uses an absolute Icon= path to bypass GTK theme cache issues."""
+        """Delegate to the module-level installer (kept for compatibility)."""
         import os
-        sizes = [
-            ("16x16",   "filmpad-icon-16.png"),
-            ("22x22",   "filmpad-icon-22.png"),
-            ("24x24",   "filmpad-icon-24.png"),
-            ("32x32",   "filmpad-icon-32.png"),
-            ("48x48",   "filmpad-icon-48.png"),
-            ("64x64",   "filmpad-icon-64.png"),
-            ("128x128", "filmpad-icon-128.png"),
-            ("256x256", "filmpad-icon-256.png"),
-            ("512x512", "filmpad-icon-512.png"),
-        ]
-        icons_base = Path.home() / ".local/share/icons/hicolor"
-        icon_256_dest = icons_base / "256x256/apps/filmpad.png"
-        icon_changed = False
-        for size_str, fname in sizes:
-            src = resource_path(f"assets/{fname}")
-            if not src.exists():
-                continue
-            dest_dir = icons_base / size_str / "apps"
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            dest = dest_dir / "filmpad.png"
-            if not dest.exists() or src.stat().st_mtime > dest.stat().st_mtime:
-                try:
-                    shutil.copy2(src, dest)
-                    icon_changed = True
-                except Exception:
-                    pass
-        if icon_changed:
-            # Wipe stale cache file before regenerating so GTK picks up new icons
-            stale_cache = icons_base / "icon-theme.cache"
-            try:
-                stale_cache.unlink(missing_ok=True)
-            except Exception:
-                pass
-            try:
-                subprocess.run(
-                    ["gtk-update-icon-cache", "-f", "-t", str(icons_base)],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
-                )
-            except Exception:
-                pass
-
-        # Determine Exec= path
         appimage_path = os.environ.get("APPIMAGE")
-        if appimage_path:
-            exec_cmd = appimage_path
-        else:
-            # Running from source — prefix with python3
-            exec_cmd = f"python3 {Path(sys.argv[0]).resolve()}"
-
-        # Use absolute Icon= path so Plank loads the file directly, bypassing
-        # the GTK theme name-resolution cache which can be stale.
-        icon_abs = str(icon_256_dest) if icon_256_dest.exists() else "filmpad"
-
-        # Install .desktop file so Plank associates WM_CLASS with the correct icon
-        apps_dir = Path.home() / ".local/share/applications"
-        apps_dir.mkdir(parents=True, exist_ok=True)
-        desktop_dest = apps_dir / "filmpad.desktop"
-        desktop_content = (
-            "[Desktop Entry]\n"
-            "Type=Application\n"
-            "Name=FilmPad\n"
-            "Comment=Screenplay editor with local AI adaptation\n"
-            f"Exec={exec_cmd}\n"
-            f"Icon={icon_abs}\n"
-            "Terminal=false\n"
-            "Categories=Utility;TextEditor;\n"
-            "StartupWMClass=FilmPad\n"
-        )
-        try:
-            existing = desktop_dest.read_text(encoding="utf-8") if desktop_dest.exists() else ""
-            if existing != desktop_content:
-                desktop_dest.write_text(desktop_content, encoding="utf-8")
-                subprocess.run(
-                    ["update-desktop-database", str(apps_dir)],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
-                )
-        except Exception:
-            pass
+        exec_cmd = appimage_path if appimage_path else f"python3 {Path(sys.argv[0]).resolve()}"
+        _install_icons_early(exec_cmd)
 
     def _build_menu(self) -> None:
         menu_bar = tk.Menu(self.root)
@@ -1677,8 +1602,107 @@ class FilmPad:
             self.root.destroy()
 
 
+def _install_icons_early(exec_cmd: str) -> None:
+    """Install icons and .desktop file BEFORE tk.Tk() is called so Plank sees
+    the desktop entry the moment the X11 window appears.
+    Uses file-size comparison so corrupted/wrong-sized installs are always fixed."""
+    sizes = [
+        ("16x16",   "filmpad-icon-16.png"),
+        ("22x22",   "filmpad-icon-22.png"),
+        ("24x24",   "filmpad-icon-24.png"),
+        ("32x32",   "filmpad-icon-32.png"),
+        ("48x48",   "filmpad-icon-48.png"),
+        ("64x64",   "filmpad-icon-64.png"),
+        ("128x128", "filmpad-icon-128.png"),
+        ("256x256", "filmpad-icon-256.png"),
+        ("512x512", "filmpad-icon-512.png"),
+    ]
+    icons_base = Path.home() / ".local/share/icons/hicolor"
+    icon_changed = False
+    for size_str, fname in sizes:
+        src = resource_path(f"assets/{fname}")
+        if not src.exists():
+            continue
+        dest_dir = icons_base / size_str / "apps"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / "filmpad.png"
+        # Compare by file size — catches wrong-sized icons installed by older runs
+        if not dest.exists() or dest.stat().st_size != src.stat().st_size:
+            try:
+                shutil.copy2(src, dest)
+                icon_changed = True
+            except Exception:
+                pass
+    # Also install the scalable SVG so GTK/Plank can render it at any size without
+    # resampling, giving a perfectly crisp dock icon regardless of dock scale.
+    svg_src = resource_path("assets/filmpad-icon.svg")
+    if svg_src.exists():
+        svg_dest_dir = icons_base / "scalable/apps"
+        svg_dest_dir.mkdir(parents=True, exist_ok=True)
+        svg_dest = svg_dest_dir / "filmpad.svg"
+        if not svg_dest.exists() or svg_dest.stat().st_size != svg_src.stat().st_size:
+            try:
+                shutil.copy2(svg_src, svg_dest)
+                icon_changed = True
+            except Exception:
+                pass
+    if icon_changed:
+        try:
+            (icons_base / "icon-theme.cache").unlink(missing_ok=True)
+        except Exception:
+            pass
+        try:
+            subprocess.run(
+                ["gtk-update-icon-cache", "-f", "-t", str(icons_base)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+            )
+        except Exception:
+            pass
+        # Restart Plank so it reloads the freshly installed icons
+        try:
+            if subprocess.run(["pgrep", "-x", "plank"], capture_output=True).returncode == 0:
+                subprocess.Popen(
+                    ["bash", "-c", "pkill plank; sleep 0.8; plank &"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+        except Exception:
+            pass
+
+    # Use the icon theme name so GTK picks the best size (SVG > 256px) automatically.
+    # This is more reliable than an absolute path which some compositors ignore.
+    apps_dir = Path.home() / ".local/share/applications"
+    apps_dir.mkdir(parents=True, exist_ok=True)
+    desktop_dest = apps_dir / "filmpad.desktop"
+    desktop_content = (
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=FilmPad\n"
+        "Comment=Screenplay editor with local AI adaptation\n"
+        f"Exec={exec_cmd}\n"
+        "Icon=filmpad\n"
+        "Terminal=false\n"
+        "Categories=Utility;TextEditor;\n"
+        "StartupWMClass=Filmpad\n"
+    )
+    try:
+        existing = desktop_dest.read_text(encoding="utf-8") if desktop_dest.exists() else ""
+        if existing != desktop_content:
+            desktop_dest.write_text(desktop_content, encoding="utf-8")
+            subprocess.run(
+                ["update-desktop-database", str(apps_dir)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+            )
+    except Exception:
+        pass
+
+
 def main() -> None:
-    root = tk.Tk(className="FilmPad")  # sets WM_CLASS to match StartupWMClass in .desktop
+    import os
+    appimage_path = os.environ.get("APPIMAGE")
+    exec_cmd = appimage_path if appimage_path else f"python3 {Path(sys.argv[0]).resolve()}"
+    # Install icons and .desktop BEFORE the window appears so Plank sees them immediately
+    _install_icons_early(exec_cmd)
+    root = tk.Tk(className="Filmpad")  # WM_CLASS class = Filmpad, matches StartupWMClass in .desktop
     app = FilmPad(root)
     app._set_title()
     root.protocol("WM_DELETE_WINDOW", app.on_exit)
