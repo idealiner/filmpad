@@ -72,6 +72,7 @@ class FilmPad:
         self.local_ai_tab = ttk.Frame(self.main_notebook)
         self.main_notebook.add(self.editor_tab, text="Writer")
         self.main_notebook.add(self.local_ai_tab, text="Local AI")
+        self.main_notebook.bind("<<NotebookTabChanged>>", self._on_notebook_tab_changed)
 
         self.editor_frame = ttk.Frame(self.editor_tab)
         self.editor_frame.pack(fill="both", expand=True)
@@ -88,6 +89,16 @@ class FilmPad:
         self.text.configure(yscrollcommand=self.scroll.set)
         self._configure_screenplay_tags()
 
+        self.writer_ai_project_folder_var = tk.StringVar(value="")
+        self.writer_ai_model_var = tk.StringVar(value=LOCAL_AI_MODELS[0])
+        self.writer_ai_status_var = tk.StringVar(value="Select text then write a prompt.")
+        self.writer_ai_generating = False
+        self._writer_ai_cancelled = False
+        self._writer_ai_process: subprocess.Popen | None = None
+        self._writer_ai_sel_start: str | None = None
+        self._writer_ai_sel_end: str | None = None
+
+        self._build_writer_ai_panel()
         self.scroll.pack(side="right", fill="y")
         self.text.pack(fill="both", expand=True)
 
@@ -357,6 +368,307 @@ class FilmPad:
         self.root.bind("<Control-o>", lambda _e: self.open_file())
         self.root.bind("<Control-s>", lambda _e: self.save_file())
         self.root.bind("<F7>", lambda _e: self._check_spelling())
+
+    # ------------------------------------------------------------------
+    # Writer AI panel
+    # ------------------------------------------------------------------
+
+    def _build_writer_ai_panel(self) -> None:
+        outer = ttk.Frame(self.editor_frame)
+        outer.pack(side="right", fill="y")
+
+        self._writer_ai_toggle_btn = ttk.Button(
+            outer, text="\u25b6", width=3, command=self._toggle_writer_ai_sidebar
+        )
+        self._writer_ai_toggle_btn.pack(side="top", padx=(4, 4), pady=4)
+
+        self._writer_ai_content = ttk.Frame(outer, padding=(6, 2, 10, 10))
+        # Starts collapsed — content is not packed yet
+
+        ttk.Label(
+            self._writer_ai_content, text="Writer AI", font=("TkDefaultFont", 10, "bold")
+        ).pack(anchor="w")
+        ttk.Label(
+            self._writer_ai_content,
+            text="Select text in editor, write a prompt, then generate.",
+            wraplength=240,
+        ).pack(anchor="w", pady=(2, 8))
+
+        ttk.Label(self._writer_ai_content, text="Project knowledge folder").pack(anchor="w")
+        folder_row = ttk.Frame(self._writer_ai_content)
+        folder_row.pack(fill="x", pady=(2, 6))
+        ttk.Entry(
+            folder_row, textvariable=self.writer_ai_project_folder_var, width=26
+        ).pack(side="left", fill="x", expand=True)
+        ttk.Button(
+            folder_row, text="...", width=3, command=self._pick_writer_ai_project_folder
+        ).pack(side="left", padx=(4, 0))
+
+        ttk.Label(self._writer_ai_content, text="Model").pack(anchor="w")
+        ttk.Combobox(
+            self._writer_ai_content,
+            textvariable=self.writer_ai_model_var,
+            values=LOCAL_AI_MODELS,
+            state="readonly",
+            width=28,
+        ).pack(fill="x", pady=(2, 8))
+
+        ttk.Label(self._writer_ai_content, text="Prompt").pack(anchor="w")
+        prompt_frame = ttk.Frame(self._writer_ai_content)
+        prompt_frame.pack(fill="x", pady=(2, 6))
+        self.writer_ai_prompt_text = tk.Text(
+            prompt_frame, width=30, height=8, wrap="word", padx=6, pady=6
+        )
+        prompt_scroll = tk.Scrollbar(prompt_frame, command=self.writer_ai_prompt_text.yview)
+        self.writer_ai_prompt_text.configure(yscrollcommand=prompt_scroll.set)
+        prompt_scroll.pack(side="right", fill="y")
+        self.writer_ai_prompt_text.pack(side="left", fill="both", expand=True)
+
+        ttk.Button(
+            self._writer_ai_content,
+            text="\u2728 Transcribe into Script Format",
+            command=self._transcribe_to_script_format,
+        ).pack(fill="x", pady=(2, 0))
+        ttk.Button(
+            self._writer_ai_content, text="Edit Selection", command=self._run_writer_ai_edit
+        ).pack(fill="x", pady=(4, 0))
+        ttk.Button(
+            self._writer_ai_content, text="Save", command=self.save_file
+        ).pack(fill="x", pady=(4, 0))
+
+        ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 6))
+        ttk.Label(
+            self._writer_ai_content,
+            textvariable=self.writer_ai_status_var,
+            wraplength=240,
+        ).pack(anchor="w")
+
+    def _toggle_writer_ai_sidebar(self) -> None:
+        if self._writer_ai_content.winfo_ismapped():
+            self._writer_ai_content.pack_forget()
+            self._writer_ai_toggle_btn.configure(text="\u25b6")
+        else:
+            self._writer_ai_content.pack(side="top", fill="y", expand=True)
+            self._writer_ai_toggle_btn.configure(text="\u25c4")
+
+    def _pick_writer_ai_project_folder(self) -> None:
+        folder = filedialog.askdirectory(title="Select Project Knowledge Folder")
+        if folder:
+            self.writer_ai_project_folder_var.set(folder)
+
+    def _read_project_knowledge(self) -> str:
+        folder = self.writer_ai_project_folder_var.get().strip()
+        if not folder or not Path(folder).is_dir():
+            return ""
+        MAX_CHARS = 8000
+        chunks: list[str] = []
+        total = 0
+        for ext in ("*.md", "*.txt", "*.fdx"):
+            for fpath in sorted(Path(folder).glob(ext)):
+                if total >= MAX_CHARS:
+                    break
+                try:
+                    file_text = fpath.read_text(encoding="utf-8", errors="replace")
+                    header = f"--- {fpath.name} ---\n"
+                    available = MAX_CHARS - total - len(header)
+                    if available <= 0:
+                        break
+                    chunk = header + file_text[:available]
+                    chunks.append(chunk)
+                    total += len(chunk)
+                except Exception:
+                    continue
+        return "\n\n".join(chunks)
+
+    def _build_writer_ai_prompt(
+        self, selected_text: str, user_prompt: str, project_context: str
+    ) -> str:
+        template_text = self._load_adaptation_template()
+        parts: list[str] = [
+            "You are an expert screenplay writer and story editor.\n",
+            "Use ONLY the context provided. Do not invent beyond what is given.\n\n",
+        ]
+        if project_context:
+            parts.append(
+                f"PROJECT KNOWLEDGE:\n{'=' * 40}\n{project_context}\n\n"
+            )
+        parts.append(
+            f"SCREENPLAY TEMPLATE (format reference):\n{'=' * 40}\n{template_text}\n\n"
+        )
+        parts.append(
+            f"SELECTED TEXT TO EDIT:\n{'=' * 40}\n{selected_text}\n\n"
+        )
+        parts.append(f"INSTRUCTION:\n{user_prompt}\n\n")
+        parts.append(
+            "Respond with ONLY the rewritten text. "
+            "No explanations, no preamble, no meta-commentary.\n"
+        )
+        return "".join(parts)
+
+    def _run_writer_ai_edit(self) -> None:
+        if self.writer_ai_generating:
+            return
+        user_prompt = self.writer_ai_prompt_text.get("1.0", "end-1c").strip()
+        if not user_prompt:
+            messagebox.showinfo("Writer AI", "Enter a prompt first.")
+            return
+        try:
+            sel_start = self.text.index(tk.SEL_FIRST)
+            sel_end = self.text.index(tk.SEL_LAST)
+            selected_text = self.text.get(sel_start, sel_end)
+        except tk.TclError:
+            sel_start = sel_end = None
+            selected_text = self.text.get("1.0", "end-1c")
+        if not selected_text.strip():
+            messagebox.showinfo(
+                "Writer AI", "Select some text or add content to the editor first."
+            )
+            return
+        model = self.writer_ai_model_var.get()
+        project_context = self._read_project_knowledge()
+        full_prompt = self._build_writer_ai_prompt(selected_text, user_prompt, project_context)
+        self.writer_ai_generating = True
+        self._writer_ai_cancelled = False
+        self._writer_ai_sel_start = sel_start
+        self._writer_ai_sel_end = sel_end
+        self.writer_ai_status_var.set("Generating...")
+        detail = user_prompt[:60] + ("..." if len(user_prompt) > 60 else "")
+        self._show_writer_ai_progress_overlay(detail, model)
+        threading.Thread(
+            target=self._run_writer_ai_thread, args=(model, full_prompt), daemon=True
+        ).start()
+
+    def _run_writer_ai_thread(self, model: str, prompt: str) -> None:
+        import os
+        try:
+            env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
+            proc = subprocess.Popen(
+                ["ollama", "run", model],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
+            self._writer_ai_process = proc
+            out, _err = proc.communicate(input=prompt.encode("utf-8"))
+            output = out.decode("utf-8", errors="replace")
+            self.root.after(0, self._finish_writer_ai_edit, output, proc.returncode)
+        except Exception:
+            self.root.after(0, self._finish_writer_ai_edit, "", 1)
+
+    def _finish_writer_ai_edit(self, output: str, returncode: int) -> None:
+        self._close_progress_overlay()
+        self.writer_ai_generating = False
+        self._writer_ai_process = None
+        if self._writer_ai_cancelled:
+            self.writer_ai_status_var.set("Cancelled.")
+            return
+        if returncode != 0 or not output.strip():
+            self.writer_ai_status_var.set("Error or no output from model.")
+            return
+        cleaned = self._sanitize_local_ai_output(output).strip()
+        if self._writer_ai_sel_start and self._writer_ai_sel_end:
+            self.text.delete(self._writer_ai_sel_start, self._writer_ai_sel_end)
+            self.text.insert(self._writer_ai_sel_start, cleaned)
+        else:
+            self.text.insert(tk.END, "\n" + cleaned)
+        self.writer_ai_status_var.set("Done. Review changes.")
+
+    def _transcribe_to_script_format(self) -> None:
+        default_prompt = (
+            "Convert the selected text into properly formatted screenplay scenes. "
+            "Apply correct slug lines (INT./EXT. LOCATION - DAY/NIGHT), action lines in present tense, "
+            "character names in ALL CAPS before each dialogue line, and standard dialogue formatting. "
+            "Preserve ALL content exactly - do not add, remove, or change any events, characters, or dialogue."
+        )
+        self.writer_ai_prompt_text.delete("1.0", tk.END)
+        self.writer_ai_prompt_text.insert("1.0", default_prompt)
+        self._run_writer_ai_edit()
+
+    def _show_writer_ai_progress_overlay(self, detail: str, model: str) -> None:
+        self._progress_win = tk.Toplevel(self.root)
+        win = self._progress_win
+        win.title("Generating\u2026")
+        win.resizable(False, False)
+        win.transient(self.root)
+        win.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        self.root.update_idletasks()
+        w, h = 420, 220
+        rx = self.root.winfo_rootx() + self.root.winfo_width() // 2 - w // 2
+        ry = self.root.winfo_rooty() + self.root.winfo_height() // 2 - h // 2
+        win.geometry(f"{w}x{h}+{rx}+{ry}")
+
+        outer = ttk.Frame(win, padding=(24, 18, 24, 14))
+        outer.pack(fill="both", expand=True)
+
+        ttk.Label(outer, text="Writer AI \u2014 Generating",
+                  font=("TkDefaultFont", 11, "bold")).pack(anchor="w")
+
+        detail_frame = ttk.Frame(outer, padding=(0, 8, 0, 8))
+        detail_frame.pack(fill="x")
+        ttk.Label(detail_frame, text=f"Prompt:  {detail}", wraplength=360).pack(anchor="w")
+        ttk.Label(detail_frame, text=f"Model:   {model}").pack(anchor="w")
+
+        self._elapsed_var = tk.StringVar(value="Elapsed: 0:00")
+        ttk.Label(outer, textvariable=self._elapsed_var,
+                  foreground="#888").pack(anchor="w", pady=(4, 4))
+        self._generation_start_time = time.monotonic()
+        self._tick_elapsed_timer()
+
+        self._progress_bar = ttk.Progressbar(outer, mode="indeterminate", length=370)
+        self._progress_bar.pack(fill="x")
+        self._progress_bar.start(10)
+
+        ttk.Button(outer, text="Cancel", command=self._cancel_writer_ai_edit).pack(pady=(12, 0))
+
+    def _cancel_writer_ai_edit(self) -> None:
+        self._writer_ai_cancelled = True
+        proc = self._writer_ai_process
+        if proc is not None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+        self._close_progress_overlay()
+        self.writer_ai_generating = False
+        self.writer_ai_status_var.set("Cancelled.")
+
+    def _on_notebook_tab_changed(self, _event: tk.Event) -> None:
+        selected = self.main_notebook.select()
+        if selected == str(self.local_ai_tab):
+            # Auto-save writer content before switching to Local AI
+            if self.current_file:
+                try:
+                    content = self.text.get("1.0", "end-1c")
+                    with open(self.current_file, "w", encoding="utf-8") as f:
+                        f.write(content)
+                except Exception:
+                    pass
+        elif selected == str(self.editor_tab):
+            # Reload writer from file on return
+            # If no writer file is open but a Local AI dest file exists, default to it
+            file_to_load = self.current_file
+            if (
+                not file_to_load
+                and hasattr(self, "local_ai_dest_file")
+                and self.local_ai_dest_file
+                and Path(self.local_ai_dest_file).exists()
+            ):
+                file_to_load = self.local_ai_dest_file
+                self.current_file = file_to_load
+                self.root.title(f"FilmPad \u2014 {Path(file_to_load).name}")
+            if file_to_load and Path(file_to_load).exists():
+                try:
+                    content = Path(file_to_load).read_text(encoding="utf-8")
+                    self.text.delete("1.0", tk.END)
+                    self.text.insert("1.0", content)
+                except Exception:
+                    pass
+
+    # ------------------------------------------------------------------
+    # Local AI workspace
+    # ------------------------------------------------------------------
 
     def _build_local_ai_workspace(self) -> None:
         sidebar_outer = ttk.Frame(self.local_ai_tab)
@@ -824,52 +1136,56 @@ class FilmPad:
     def _build_local_ai_prompt(self, source_name: str, start_line: int, end_line: int, slice_text: str) -> str:
         template_text = self._load_adaptation_template()
         return (
-            "You are a professional screenplay scene adapter. "
-            "Use ONLY the source text below. Do not use memory, prior knowledge, or invention.\n\n"
-            "TEMPLATE:\n"
-            "=========\n"
+            "You are a professional Hollywood screenplay adapter.\n"
+            "Your job: convert the source prose below into correctly formatted screenplay scene cards.\n"
+            "Use ONLY the source text. Do not invent, skip, or compress anything.\n\n"
+            "TEMPLATE (fill one card per scene):\n"
+            "====================================\n"
             f"{template_text}\n\n"
-            f"SOURCE TEXT: {source_name} lines {start_line}-{end_line} only\n"
+            f"SOURCE TEXT -- {source_name} lines {start_line}-{end_line}:\n"
             "=======================================================\n"
             f"{slice_text}\n\n"
-            "TASK:\n"
-            "Convert the source text into one or more screenplay scene cards using the template above.\n\n"
-            "OUTPUT FORMAT RULES (follow exactly):\n"
+            "===== MANDATORY RULES -- READ ALL BEFORE WRITING =====\n\n"
+            "RULE A -- SCENE SPLITTING (most important rule):\n"
+            "  - Every change of LOCATION or TIME OF DAY must begin a new, separate scene card.\n"
+            "  - NEVER merge two locations or two time-of-day periods into one scene card.\n"
+            "  - Number scenes sequentially within this output: 1, 2, 3 ...\n"
+            "  - Example: morning in a car AND afternoon on a highway AND night on a road\n"
+            "    = THREE separate scene cards, not one.\n\n"
+            "RULE B -- SOURCE DIALOGUE (extract ALL quoted speech):\n"
+            "  - Before writing anything, scan the entire source text for quotation marks.\n"
+            "  - Every phrase inside quotation marks is spoken dialogue.\n"
+            "  - Copy EVERY quoted line verbatim into the SOURCE DIALOGUE section,\n"
+            "    labelled with the speaker's name if known.\n"
+            "  - Example: source says: Victoria exclaimed, \"What on earth, Richard?!\"\n"
+            "    -> list: VICTORIA: What on earth, Richard?!\n"
+            "  - NEVER write 'No exact dialogue found' if quotation marks appear in the source.\n"
+            "  - Only write 'No exact dialogue found' if there are literally zero quotation marks.\n\n"
+            "RULE C -- ADAPTED SCREENPLAY SCENE formatting:\n"
+            "  - Slug line: INT./EXT. LOCATION - DAY / AFTERNOON / NIGHT / CONTINUOUS\n"
+            "  - Action lines: present tense, left margin, one complete sentence per line.\n"
+            "  - Preserve EVERY named beat, object, action, and moment in the source.\n"
+            "  - For each spoken line, format EXACTLY like this (no exceptions):\n"
             "\n"
-            "1. LOCATION field:\n"
-            "   - Use the location stated or clearly implied in the source.\n"
-            "   - If the location is genuinely unknowable, write: UNKNOWN\n"
-            "   - NEVER write: Unknown (place name). Either use the place or write UNKNOWN.\n"
+            "        CHARACTER NAME\n"
+            "        Exact dialogue text.\n"
             "\n"
-            "2. SOURCE DIALOGUE INSIDE THIS SCENE:\n"
-            "   - Include only spoken lines, direct quotes, or inner quoted thoughts from the source.\n"
-            "   - Copy them word for word. Do not paraphrase.\n"
-            "   - Do not include narration or description here.\n"
-            "\n"
-            "3. ADAPTED SCREENPLAY SCENE formatting:\n"
-            "   - Begin with a slug line: INT./EXT. LOCATION - DAY/NIGHT\n"
-            "   - Action lines: left margin, present tense, one sentence per line, \n"
-            "     describe only what can be seen or heard.\n"
-            "   - Every spoken line MUST appear like this:\n"
-            "\n"
-            "         CHARACTER NAME\n"
-            "         Exact dialogue copied from source.\n"
-            "\n"
-            "   - CHARACTER NAME must be in ALL CAPS on its own line above every dialogue line.\n"
-            "   - NEVER omit the character name before a dialogue line.\n"
-            "   - NEVER write 'NO EXACT DIALOGUE FOUND' if SOURCE DIALOGUE has content.\n"
-            "   - If a character name is genuinely unknown, write: UNKNOWN SPEAKER\n"
-            "   - Do NOT add parentheticals like (quietly), (feigning calm) unless the source\n"
-            "     explicitly states that exact tone or manner in those words.\n"
-            "   - Do NOT describe psychology, motivation, subtext, or emotion unless it is\n"
-            "     physically visible or explicitly stated in the source.\n"
-            "   - Preserve concrete cues: weather, objects, posture, sound, silence, gesture.\n"
-            "   - Do NOT wrap lines mid-word. Write each sentence on one complete line.\n"
-            "   - Use plain ASCII punctuation only.\n"
-            "\n"
-            "4. NOTES field:\n"
-            "   - Reference only what actually changed in this output.\n"
-            "   - Do not invent examples not present in the source range.\n"
+            "  - CHARACTER NAME must be ALL CAPS on its own line.\n"
+            "  - Dialogue text must appear on the very next line after the name.\n"
+            "  - NEVER write a character name block without dialogue immediately following it.\n"
+            "  - NEVER write a parenthetical under a character name with no dialogue below it.\n"
+            "  - Only add a parenthetical if the source uses that EXACT word for the manner\n"
+            "    of speaking (e.g. source says 'he whispered' -> (whispering) is allowed).\n"
+            "  - No invented emotion, psychology, or subtext.\n"
+            "  - No mid-word line breaks. Every sentence is one unbroken line.\n"
+            "  - ASCII punctuation only.\n\n"
+            "RULE D -- LOCATION field:\n"
+            "  - Use the location explicitly stated or clearly implied in the source.\n"
+            "  - If genuinely unknowable, write: UNKNOWN\n"
+            "  - NEVER write: Unknown (place name).\n\n"
+            "RULE E -- NOTES field:\n"
+            "  - List only actual changes made in this output.\n"
+            "  - Do not generalise or invent examples not present in the source.\n"
         )
 
     def _show_progress_overlay(self, source_name: str, start_line: int, end_line: int, model: str) -> None:
@@ -972,7 +1288,10 @@ class FilmPad:
             if second.startswith(first):
                 return second
             return first + second
-        cleaned = re.sub(r"(\b\w{1,4})\n(\1\w+)", _rejoin_split_words, cleaned)
+        # Prefix-overlap split: "fr\nfrom", "shiftin\nshifting" (extended to 12 chars)
+        cleaned = re.sub(r"(\b\w{1,12})\n(\1\w+)", _rejoin_split_words, cleaned)
+        # Exact word repeated at line break: "with\nwith rest" -> "with rest"
+        cleaned = re.sub(r"\b(\w+) *\n\1\b", r"\1", cleaned)
         return cleaned.strip("\n") + "\n"
 
     def _generate_local_ai_adaptation(self) -> None:
