@@ -7,13 +7,13 @@
 
 # -------- Settings --------
 
-BRINKCHASER_DIR="/home/uncannyvalleypictures/ModalAI/Movies/Brinkchaser"
-BRINKCHASER_MEMORY="$BRINKCHASER_DIR/99_SESSION_MEMORY.md"
+PROJECT_DIR="$HOME/filmpad-projects/my-project"
+PROJECT_MEMORY="$PROJECT_DIR/99_SESSION_MEMORY.md"
 
-BRINKCHASER_TEMPLATES_DIR="$BRINKCHASER_DIR/templates"
-BRINKCHASER_EXTRACTIONS_DIR="$BRINKCHASER_DIR/extractions"
+PROJECT_TEMPLATES_DIR="$PROJECT_DIR/templates"
+PROJECT_EXTRACTIONS_DIR="$PROJECT_DIR/extractions"
 
-SCREENPLAY_TEMPLATE_FILE="$BRINKCHASER_TEMPLATES_DIR/SCREENPLAY_SCENE_ADAPTATION_TEMPLATE.md"
+SCREENPLAY_TEMPLATE_FILE="$PROJECT_TEMPLATES_DIR/SCREENPLAY_SCENE_ADAPTATION_TEMPLATE.md"
 
 DEFAULT_GENERAL_MODEL="llama3.1:8b"
 DEFAULT_STORY_MODEL="mistral:7b"
@@ -62,7 +62,7 @@ choose_model() {
   echo
   echo "Choose model:"
   echo "1) llama3.1:8b       - best general local chat/writing"
-  echo "2) mistral:7b        - good story / Brinkchaser writing"
+  echo "2) mistral:7b        - good story / creative writing"
   echo "3) qwen2.5-coder:7b  - best for coding/config"
   echo "4) use default: $default_model"
   echo
@@ -182,11 +182,11 @@ project_chat() {
 mkdir -p "$project_dir"
 
 if [ ! -f "$memory_file" ]; then
-  printf '# Brinkchaser Session Memory\n\n' > "$memory_file"
+  printf '# Project Session Memory\n\n' > "$memory_file"
 fi
 
 if [ ! -s "$memory_file" ]; then
-  printf '# Brinkchaser Session Memory\n\n' > "$memory_file"
+  printf '# Project Session Memory\n\n' > "$memory_file"
 fi
 
 LAST_RESPONSE_FILE="/tmp/local-ai-last-response.txt"
@@ -269,7 +269,7 @@ if [[ "$QUESTION" == "/edit-memory" ]]; then
   mkdir -p "$(dirname "$memory_file")"
 
   if [ ! -f "$memory_file" ] || [ ! -s "$memory_file" ]; then
-    printf '# Brinkchaser Session Memory\n\n' > "$memory_file"
+    printf '# Project Session Memory\n\n' > "$memory_file"
   fi
 
   setsid -f gedit "$memory_file" >/dev/null 2>&1
@@ -284,7 +284,7 @@ if [[ "$QUESTION" == "/clear-memory" ]]; then
   read -r -p "Type CLEAR to confirm: " confirm_clear
 
   if [[ "$confirm_clear" == "CLEAR" ]]; then
-    printf '# Brinkchaser Session Memory\n\n' > "$memory_file"
+    printf '# Project Session Memory\n\n' > "$memory_file"
     echo "Memory cleared."
   else
     echo "Clear cancelled."
@@ -401,7 +401,7 @@ show_activity_spinner() {
 }
 
 adapt_line_range() {
-  local project_dir="$BRINKCHASER_DIR"
+  local project_dir="$PROJECT_DIR"
   local default_source="beatsheet.txt"
   local max_lines=100
   local model="$DEFAULT_STORY_MODEL"
@@ -475,8 +475,8 @@ template_file="$SCREENPLAY_TEMPLATE_FILE"
     return 1
   fi
 
-mkdir -p "$BRINKCHASER_EXTRACTIONS_DIR"
-mkdir -p "$BRINKCHASER_TEMPLATES_DIR"
+mkdir -p "$PROJECT_EXTRACTIONS_DIR"
+mkdir -p "$PROJECT_TEMPLATES_DIR"
 
  if [ ! -f "$template_file" ]; then
   cat > "$template_file" <<'EOF'
@@ -576,7 +576,7 @@ fi
   if [[ "$out_input" = /* ]]; then
     out_file="$out_input"
   else
-    out_file="$BRINKCHASER_EXTRACTIONS_DIR/$out_input"
+    out_file="$PROJECT_EXTRACTIONS_DIR/$out_input"
   fi
   
   if [ -f "$out_file" ]; then
@@ -591,7 +591,7 @@ fi
   fi
 fi
 
-slice_file="$BRINKCHASER_EXTRACTIONS_DIR/${base_name}_LINES_${start_line}_${end_line}_ONLY.txt"
+slice_file="$PROJECT_EXTRACTIONS_DIR/${base_name}_LINES_${start_line}_${end_line}_ONLY.txt"
 
 if [ -f "$slice_file" ]; then
   echo
@@ -805,7 +805,7 @@ main_menu() {
   echo "What do you want to work on?"
   echo
   echo "1) General local AI chat"
-  echo "2) Brinkchaser project assistant"
+  echo "2) Project assistant"
   echo "3) Coding / config assistant"
   echo "4) Adapt exact screenplay line range"
   echo "5) Exit"
@@ -818,7 +818,7 @@ main_menu() {
       general_chat
       ;;
     2)
-      project_chat "Brinkchaser" "$BRINKCHASER_DIR" "$BRINKCHASER_MEMORY" "$DEFAULT_STORY_MODEL"
+      project_chat "MyProject" "$PROJECT_DIR" "$PROJECT_MEMORY" "$DEFAULT_STORY_MODEL"
       ;;
     3)
       coding_chat
