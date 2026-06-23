@@ -24,20 +24,20 @@
     <rect x="2" y="38" width="112" height="72" rx="9" fill="url(#bodyShade)" stroke="#2d2e32" stroke-width="2.5"/>
     <rect x="2" y="38" width="112" height="7" fill="#ece7dd" opacity="0.9"/>
 
-    <g transform="rotate(-19 18 33)">
-      <rect x="0" y="12" width="108" height="18" rx="3" fill="url(#clapperShade)" stroke="#111216" stroke-width="2"/>
-      <polygon points="0,12 18,12 31,30 0,30" fill="#26272c" opacity="0.95"/>
-      <rect x="29" y="12" width="16" height="18" fill="#46b971"/>
-      <rect x="45" y="12" width="16" height="18" fill="#f6e27a"/>
-      <rect x="61" y="12" width="16" height="18" fill="#42a5ff"/>
-      <rect x="77" y="12" width="16" height="18" fill="#ef4d5b"/>
-      <rect x="93" y="12" width="15" height="18" fill="#f3f2ef"/>
-      <line x1="44" y1="12" x2="29" y2="30" stroke="#131418" stroke-width="1.8" opacity="0.55"/>
-      <line x1="60" y1="12" x2="45" y2="30" stroke="#131418" stroke-width="1.8" opacity="0.55"/>
-      <line x1="76" y1="12" x2="61" y2="30" stroke="#131418" stroke-width="1.8" opacity="0.55"/>
-      <line x1="92" y1="12" x2="77" y2="30" stroke="#131418" stroke-width="1.8" opacity="0.55"/>
-      <line x1="108" y1="12" x2="93" y2="30" stroke="#131418" stroke-width="1.8" opacity="0.55"/>
-      <circle cx="7" cy="21" r="2.3" fill="#d9dade" stroke="#81838b" stroke-width="0.8"/>
+    <g>
+      <rect x="0" y="9" width="108" height="18" rx="3" fill="url(#clapperShade)" stroke="#111216" stroke-width="2"/>
+      <polygon points="0,9 18,9 31,27 0,27" fill="#26272c" opacity="0.95"/>
+      <rect x="29" y="9" width="16" height="18" fill="#46b971"/>
+      <rect x="45" y="9" width="16" height="18" fill="#f6e27a"/>
+      <rect x="61" y="9" width="16" height="18" fill="#42a5ff"/>
+      <rect x="77" y="9" width="16" height="18" fill="#ef4d5b"/>
+      <rect x="93" y="9" width="15" height="18" fill="#f3f2ef"/>
+      <line x1="44" y1="9" x2="29" y2="27" stroke="#131418" stroke-width="1.8" opacity="0.55"/>
+      <line x1="60" y1="9" x2="45" y2="27" stroke="#131418" stroke-width="1.8" opacity="0.55"/>
+      <line x1="76" y1="9" x2="61" y2="27" stroke="#131418" stroke-width="1.8" opacity="0.55"/>
+      <line x1="92" y1="9" x2="77" y2="27" stroke="#131418" stroke-width="1.8" opacity="0.55"/>
+      <line x1="108" y1="9" x2="93" y2="27" stroke="#131418" stroke-width="1.8" opacity="0.55"/>
+      <circle cx="7" cy="18" r="2.3" fill="#d9dade" stroke="#81838b" stroke-width="0.8"/>
     </g>
 
     <rect x="5" y="27" width="109" height="16" rx="3" fill="url(#clapperShade)" stroke="#111216" stroke-width="2"/>
