@@ -27,31 +27,34 @@ pyinstaller filmpad.spec
 
 mkdir -p AppDir/usr/bin
 mkdir -p AppDir/usr/share/applications
-mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
-mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+for size in 16x16 22x22 24x24 32x32 48x48 64x64 128x128 256x256 512x512 scalable; do
+    mkdir -p "AppDir/usr/share/icons/hicolor/$size/apps"
+done
 
-icon_png="assets/filmpad-icon.png"
-if [[ ! -f "$icon_png" ]]; then
-    if ! command -v convert >/dev/null 2>&1; then
-        echo "Missing $icon_png and ImageMagick 'convert' is not available for SVG fallback." >&2
-        exit 1
+icon_src="assets/filmpad-icon.png"
+
+# Generate any missing sized icons
+for s in 16 22 24 32 48 64 128 256 512; do
+    f="assets/filmpad-icon-${s}.png"
+    if [[ ! -f "$f" ]] && command -v convert >/dev/null 2>&1; then
+        convert "$icon_src" -resize "${s}x${s}" -quality 100 "$f"
     fi
-    if [[ ! -f assets/filmpad-icon.svg ]]; then
-        echo "Missing both assets/filmpad-icon.png and assets/filmpad-icon.svg" >&2
-        exit 1
-    fi
-    icon_png="build/filmpad-icon.png"
-    convert assets/filmpad-icon.svg -resize 256x256 "$icon_png"
-fi
+done
+
+icon_256="assets/filmpad-icon-256.png"
+[[ ! -f "$icon_256" ]] && icon_256="$icon_src"
 
 install -m 0755 dist/filmpad AppDir/usr/bin/filmpad
 install -m 0644 packaging/filmpad.desktop AppDir/usr/share/applications/filmpad.desktop
 install -m 0644 assets/filmpad-icon.svg AppDir/usr/share/icons/hicolor/scalable/apps/filmpad.svg
-install -m 0644 "$icon_png" AppDir/usr/share/icons/hicolor/256x256/apps/filmpad.png
+for s in 16 22 24 32 48 64 128 256 512; do
+    f="assets/filmpad-icon-${s}.png"
+    [[ -f "$f" ]] && install -m 0644 "$f" "AppDir/usr/share/icons/hicolor/${s}x${s}/apps/filmpad.png"
+done
 install -m 0644 packaging/filmpad.desktop AppDir/filmpad.desktop
 install -m 0644 assets/filmpad-icon.svg AppDir/filmpad.svg
-install -m 0644 "$icon_png" AppDir/filmpad.png
-cp "$icon_png" AppDir/.DirIcon
+install -m 0644 "$icon_256" AppDir/filmpad.png
+cp "$icon_256" AppDir/.DirIcon
 cat > AppDir/AppRun <<'EOF'
 #!/usr/bin/env bash
 HERE="$(dirname "$(readlink -f "$0")")"

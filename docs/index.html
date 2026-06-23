@@ -3,8 +3,275 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FilmPad v0.1 Download</title>
-  <meta name="description" content="Download FilmPad v0.1 for Linux as an AppImage.">
+  <title>FilmPad — Screenplay Editor with Local AI</title>
+  <meta name="description" content="FilmPad is a Linux screenplay editor with a Local AI workspace for adapting prose into screenplay format using Ollama models. Download the AppImage.">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d12;
+      --panel: rgba(19, 23, 32, 0.88);
+      --panel-border: rgba(255, 255, 255, 0.12);
+      --text: #eef2ff;
+      --muted: #b4bccf;
+      --accent: #7dd3fc;
+      --accent-strong: #38bdf8;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(56, 189, 248, 0.24), transparent 28%),
+        radial-gradient(circle at 85% 18%, rgba(125, 211, 252, 0.18), transparent 25%),
+        linear-gradient(160deg, #06070a 0%, #0b1220 55%, #090b10 100%);
+      display: grid;
+      place-items: center;
+      padding: 32px;
+    }
+
+    .card {
+      width: min(100%, 880px);
+      padding: 40px;
+      border: 1px solid var(--panel-border);
+      border-radius: 28px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 18px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.8rem, 7vw, 5rem);
+      line-height: 0.95;
+      letter-spacing: -0.05em;
+    }
+
+    h2 {
+      margin: 36px 0 12px;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+      color: var(--accent);
+    }
+
+    p {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.6;
+      max-width: 68ch;
+    }
+
+    ul {
+      margin: 10px 0 0;
+      padding-left: 1.4em;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.8;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin: 30px 0;
+    }
+
+    .stat {
+      padding: 16px 18px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .stat-label {
+      display: block;
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 26px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 22px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 700;
+      transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+    }
+
+    .button.primary {
+      color: #06111a;
+      background: linear-gradient(135deg, var(--accent), #dbeafe);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    .button.secondary {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .button:hover { transform: translateY(-1px); }
+
+    .deps {
+      margin-top: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .deps table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.93rem;
+    }
+
+    .deps th {
+      text-align: left;
+      padding: 10px 16px;
+      background: rgba(255,255,255,0.04);
+      color: var(--accent);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+    }
+
+    .deps td {
+      padding: 10px 16px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      color: var(--muted);
+      vertical-align: top;
+    }
+
+    .deps td:first-child { color: var(--text); font-weight: 600; }
+
+    .footnote {
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    code {
+      padding: 0.18rem 0.4rem;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font-size: 0.9em;
+    }
+
+    @media (max-width: 720px) {
+      .card { padding: 26px; border-radius: 22px; }
+      .meta { grid-template-columns: 1fr; }
+      .actions { flex-direction: column; }
+      .button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="eyebrow">FilmPad &mdash; Linux release</div>
+    <h1>Download v0.1</h1>
+    <p>
+      FilmPad is a screenplay editor with a built-in Local AI workspace for adapting prose source text into
+      properly formatted screenplay scenes, powered by locally running <a href="https://ollama.com" style="color:var(--accent)">Ollama</a> models &mdash; no cloud, no API key.
+    </p>
+
+    <section class="meta" aria-label="Release details">
+      <div class="stat">
+        <span class="stat-label">Version</span>
+        <span class="stat-value">0.1</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Package</span>
+        <span class="stat-value">AppImage (Linux)</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Size</span>
+        <span class="stat-value">&asymp; 15 MB</span>
+      </div>
+    </section>
+
+    <div class="actions">
+      <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.1/FilmPad-v0.1-x86_64.AppImage">&#8659; Download AppImage</a>
+      <a class="button secondary" href="https://github.com/idealiner/filmpad">GitHub Repository</a>
+      <a class="button secondary" href="https://github.com/idealiner/filmpad/releases/tag/v0.1">Release Notes</a>
+    </div>
+
+    <p class="footnote">
+      <code>chmod +x FilmPad-v0.1-x86_64.AppImage &amp;&amp; ./FilmPad-v0.1-x86_64.AppImage</code>
+    </p>
+
+    <h2>Features</h2>
+    <ul>
+      <li><strong>Writer tab</strong> &mdash; screenplay editor with format presets (Scene Heading, Action, Character, Dialogue, Parenthetical, Transition), font picker, spell check, and read-aloud via <code>spd-say</code></li>
+      <li><strong>Writer AI panel</strong> &mdash; collapsible right-side panel; select text, write a prompt (or click &ldquo;Transcribe into Script Format&rdquo;), and the AI rewrites the selection in place using your project knowledge folder as context</li>
+      <li><strong>Local AI tab</strong> &mdash; split-pane workspace: load a prose source file, set a line range, pick a model, and generate scene-by-scene screenplay adaptations with insertion-point control and a progress overlay</li>
+      <li><strong>Tab auto-save / live reload</strong> &mdash; switching tabs auto-saves and reloads the active file so both panes stay in sync</li>
+      <li>All AI runs locally via Ollama &mdash; no internet required after model download</li>
+    </ul>
+
+    <h2>Dependencies</h2>
+    <p style="margin-top:6px">The AppImage bundles Python and Tkinter. Only these need to be installed separately:</p>
+    <div class="deps">
+      <table>
+        <tr><th>Dependency</th><th>Purpose</th><th>Install</th></tr>
+        <tr>
+          <td>Ollama</td>
+          <td>Local LLM inference engine (required for AI features)</td>
+          <td><a href="https://ollama.com/download" style="color:var(--accent)">ollama.com/download</a></td>
+        </tr>
+        <tr>
+          <td>An Ollama model</td>
+          <td>e.g. llama3, mistral, phi3</td>
+          <td><code>ollama pull llama3</code></td>
+        </tr>
+        <tr>
+          <td>speech-dispatcher</td>
+          <td>Read-aloud (<code>spd-say</code>)</td>
+          <td><code>sudo apt install speech-dispatcher</code></td>
+        </tr>
+      </table>
+    </div>
+
+    <p class="footnote">
+      Source: <a href="https://github.com/idealiner/filmpad" style="color:var(--accent)">github.com/idealiner/filmpad</a> &mdash; MIT licence
+    </p>
+  </main>
+</body>
+</html>
   <style>
     :root {
       color-scheme: dark;

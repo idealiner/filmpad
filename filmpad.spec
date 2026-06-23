@@ -1,12 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
 
+tk_datas, tk_binaries, tk_hiddenimports = collect_all('tkinter')
 
 a = Analysis(
     ['filmpad.py'],
     pathex=[],
-    binaries=[],
-    datas=[('assets', 'assets')],
-    hiddenimports=[],
+    binaries=tk_binaries,
+    datas=[('assets', 'assets')] + tk_datas,
+    hiddenimports=tk_hiddenimports + ['tkinter', '_tkinter', 'tkinter.ttk',
+                                      'tkinter.filedialog', 'tkinter.font',
+                                      'tkinter.messagebox'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
