@@ -498,6 +498,54 @@ class FilmPad:
         if hasattr(self, "local_ai_result_text"):
             self._configure_screenplay_tags_for_widget(self.local_ai_result_text)
 
+    _SLUG_RE = re.compile(r"^(INT\.?|EXT\.?|INT\./EXT\.?|I/E\.?)\s", re.IGNORECASE)
+    _TRANS_RE = re.compile(
+        r"^(FADE\s+(IN|OUT|TO)|CUT\s+TO|SMASH\s+CUT|MATCH\s+CUT|"
+        r"DISSOLVE\s+TO|WIPE\s+TO|INTERCUT|TIME\s+CUT|JUMP\s+CUT)",
+        re.IGNORECASE,
+    )
+
+    def _auto_tag_screenplay_block(self, widget: tk.Text, start_idx: str, end_idx: str) -> None:
+        """Heuristically apply screenplay format tags to a newly-inserted block of text."""
+        for tag in SCREENPLAY_FORMATS:
+            widget.tag_remove(tag, start_idx, end_idx)
+
+        start_row = int(widget.index(start_idx).split(".")[0])
+        end_row   = int(widget.index(end_idx).split(".")[0])
+
+        in_dialogue = False
+        for row in range(start_row, end_row + 1):
+            line = widget.get(f"{row}.0", f"{row}.end")
+            stripped = line.strip()
+            if not stripped:
+                in_dialogue = False
+                continue
+
+            if self._SLUG_RE.match(stripped):
+                tag = "Scene Heading"
+                in_dialogue = False
+            elif self._TRANS_RE.match(stripped):
+                tag = "Transition"
+                in_dialogue = False
+            elif stripped.startswith("(") and stripped.endswith(")"):
+                tag = "Parenthetical"
+            elif (
+                stripped == stripped.upper()
+                and len(stripped) <= 45
+                and not re.search(r"[.,!?;:]", stripped)
+                and " - " not in stripped
+                and " – " not in stripped
+            ):
+                tag = "Character"
+                in_dialogue = True
+            elif in_dialogue:
+                tag = "Dialogue"
+            else:
+                tag = "Action"
+                in_dialogue = False
+
+            widget.tag_add(tag, f"{row}.0", f"{row}.end")
+
     def _active_editor_widget(self) -> tk.Text:
         focus_widget = self.root.focus_get()
         if hasattr(self, "local_ai_result_text") and focus_widget is self.local_ai_result_text:
@@ -920,14 +968,19 @@ class FilmPad:
             new_text = prop_text.get("1.0", "end-1c")
             sel_start = data["sel_start"]
             sel_end = data["sel_end"]
+            ins_pos = None
             if sel_start and sel_end:
                 try:
                     self.text.delete(sel_start, sel_end)
                     self.text.insert(sel_start, new_text)
+                    ins_pos = sel_start
                 except tk.TclError:
                     self.text.insert(tk.END, "\n" + new_text)
             else:
                 self.text.insert(tk.END, "\n" + new_text)
+            if ins_pos is not None:
+                end_pos = self.text.index(f"{ins_pos} + {len(new_text)}c")
+                self._auto_tag_screenplay_block(self.text, ins_pos, end_pos)
             self.writer_ai_status_var.set("Changes accepted.")
             win.destroy()
 
@@ -944,18 +997,29 @@ class FilmPad:
 
     def _transcribe_to_script_format(self) -> None:
         default_prompt = (
-            "Convert the selected text into properly formatted screenplay scenes.\n\n"
-            "VERBATIM RULE (highest priority): Every word spoken by a character — "
-            "anything in quotation marks, or clearly identifiable as speech — MUST be "
-            "preserved letter-for-letter. Do NOT paraphrase, summarise, condense, or "
-            "alter any spoken word in any way. Copy dialogue exactly as written, including "
-            "all punctuation inside the quotes.\n\n"
-            "Formatting rules:\n"
-            "- Slug lines: INT./EXT. LOCATION - DAY/NIGHT\n"
-            "- Action lines: present tense, third person\n"
-            "- Character names: ALL CAPS on their own line before dialogue\n"
-            "- Parentheticals: only when written in the source; never invented\n"
-            "- Do not add, remove, or merge scenes — keep every scene that exists in the source."
+            "You are a screenplay FORMATTER — not an editor or writer. "
+            "Your sole job is to apply standard screenplay layout to the source text. "
+            "Do not rewrite, summarise, condense, or omit anything.\n\n"
+            "ABSOLUTE RULES (breaking any of these is wrong):\n"
+            "1. PRESERVE EVERYTHING VERBATIM. Every sentence, phrase, and word from the "
+            "source must appear in the output unchanged — action lines, descriptions, "
+            "situational notes, all of it.\n"
+            "2. PRESERVE ALL DIALOGUE VERBATIM, word for word, whether or not it appears "
+            "in quotation marks.\n"
+            "3. PRESERVE ALL TRANSITIONS EXACTLY: \"CUT TO —\", \"INTERCUT —\", "
+            "\"FADE TO BLACK\", \"FADE OUT.\", etc. — copy them as-is on their own line.\n"
+            "4. PRESERVE ALL SCENE HEADINGS: INT., EXT., or bare location lines — keep "
+            "every one that exists; do NOT invent or remove any.\n"
+            "5. Do NOT merge, reorder, or split scenes.\n\n"
+            "FORMATTING rules (apply these without altering any text):\n"
+            "- Scene headings: INT./EXT. LOCATION – TIME (ALL CAPS, own line)\n"
+            "- Transitions (CUT TO, INTERCUT, FADE TO, etc.): ALL CAPS, own line\n"
+            "- Character names: ALL CAPS on their own line immediately before their speech\n"
+            "- Dialogue: lines directly below the character name\n"
+            "- Parentheticals: (in parentheses) between character name and dialogue, "
+            "only if present in the source — never invent them\n"
+            "- Action/description: plain paragraph lines\n\n"
+            "Output the formatted screenplay text only — no commentary, no preamble."
         )
         self.writer_ai_prompt_text.delete("1.0", tk.END)
         self.writer_ai_prompt_text.insert("1.0", default_prompt)
