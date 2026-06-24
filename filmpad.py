@@ -361,6 +361,7 @@ class FilmPad:
             background=c["text_bg"], foreground=c["text_fg"],
             insertbackground=c["insert"],
             selectbackground=c["sel_bg"], selectforeground=c["sel_fg"],
+            inactiveselectbackground=c["sel_bg"],
             highlightbackground=c["ttk_bg"], highlightcolor=c["sel_bg"],
             highlightthickness=1 if self._dark_mode else 0,
             borderwidth=0, relief="flat",
@@ -941,6 +942,7 @@ class FilmPad:
             background=c["text_bg"], foreground=c["text_fg"],
             insertbackground=c["insert"],
             selectbackground=c["sel_bg"], selectforeground=c["sel_fg"],
+            inactiveselectbackground=c["sel_bg"],
         )
         orig_frame = tk.Frame(pane, bg=c["ttk_bg"])
         orig_text = tk.Text(orig_frame, state="normal", **text_opts)
