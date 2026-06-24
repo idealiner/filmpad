@@ -64,6 +64,75 @@ DARK_COLORS = {
     "entry_bg": "#3c3c3c",
 }
 
+# Maps accent colour names → a selection-background hex that is clearly tinted
+# and still gives enough contrast for white (#fff) text on top.
+_ACCENT_PALETTE: dict[str, str] = {
+    "pink":   "#7d1c4e",
+    "purple": "#5c1a7c",
+    "red":    "#8b1a1a",
+    "orange": "#7d3000",
+    "yellow": "#6b5900",
+    "green":  "#1a5c20",
+    "teal":   "#005c52",
+    "blue":   "#264f78",
+    "slate":  "#2c3e50",
+    "grey":   "#3a4a5a",
+    "gray":   "#3a4a5a",
+}
+
+
+def _get_system_accent_sel_bg() -> str:
+    """Return a selection-background hex colour that matches the system accent.
+
+    Probe order:
+      1. GNOME 46+ / Cinnamon  accent-color gsettings key (returns a name)
+      2. Cinnamon theme name   (colour encoded as suffix e.g. 'WhiteSur-Dark-pink')
+      3. GTK 4 / GTK 3 CSS    @define-color accent_color …
+      4. Hard-coded blue fallback
+    """
+    # 1 — gsettings accent-color key
+    for schema in ("org.gnome.desktop.interface", "org.cinnamon.desktop.interface"):
+        try:
+            r = subprocess.run(
+                ["gsettings", "get", schema, "accent-color"],
+                capture_output=True, text=True, timeout=1,
+            )
+            if r.returncode == 0:
+                name = r.stdout.strip().strip("'\"").lower()
+                if name in _ACCENT_PALETTE:
+                    return _ACCENT_PALETTE[name]
+        except Exception:
+            pass
+
+    # 2 — Cinnamon theme name suffix  e.g. "WhiteSur-Dark-pink"
+    try:
+        r = subprocess.run(
+            ["gsettings", "get", "org.cinnamon.theme", "name"],
+            capture_output=True, text=True, timeout=1,
+        )
+        if r.returncode == 0:
+            theme = r.stdout.strip().strip("'\"").lower()
+            for name, color in _ACCENT_PALETTE.items():
+                if theme.endswith(f"-{name}") or f"-{name}-" in theme:
+                    return color
+    except Exception:
+        pass
+
+    # 3 — GTK CSS @define-color accent_color
+    for css_path in (
+        Path.home() / ".config/gtk-4.0/gtk.css",
+        Path.home() / ".config/gtk-3.0/gtk.css",
+    ):
+        try:
+            text = css_path.read_text(encoding="utf-8")
+            m = re.search(r"@define-color\s+accent_color\s+(#[0-9a-fA-F]{3,8})", text)
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+
+    return _ACCENT_PALETTE["blue"]
+
 
 class FilmPad:
     def __init__(self, root: tk.Tk) -> None:
@@ -208,7 +277,9 @@ class FilmPad:
         self._theme_btn.configure(text="\u2600 Light" if self._dark_mode else "\U0001f319 Dark")
 
     def _apply_theme(self) -> None:
-        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        c = dict(DARK_COLORS if self._dark_mode else LIGHT_COLORS)
+        if self._dark_mode:
+            c["sel_bg"] = _get_system_accent_sel_bg()
         bd = c["entry_bg"]   # border colour used everywhere
 
         # --- ttk styles ---
