@@ -919,14 +919,19 @@ class FilmPad:
         win.title("Review \u2014 Original vs Proposed")
         win.transient(self.root)
         self.root.update_idletasks()
-        w, h = 1000, 600
+        w, h = 1100, 720
         rx = self.root.winfo_rootx() + self.root.winfo_width() // 2 - w // 2
         ry = self.root.winfo_rooty() + self.root.winfo_height() // 2 - h // 2
+        # Keep window on-screen
+        rx = max(0, rx)
+        ry = max(0, ry)
         win.geometry(f"{w}x{h}+{rx}+{ry}")
+        win.minsize(700, 500)
         win.configure(bg=c["ttk_bg"])
 
+        # Header row
         header = tk.Frame(win, bg=c["ttk_bg"])
-        header.pack(fill="x", padx=10, pady=(8, 0))
+        header.pack(side="top", fill="x", padx=10, pady=(8, 0))
         tk.Label(header, text="Original  (read-only)",
                  font=("TkDefaultFont", 10, "bold"),
                  bg=c["ttk_bg"], fg=c["ttk_fg"]).pack(side="left", padx=(0, 0))
@@ -934,39 +939,9 @@ class FilmPad:
                  font=("TkDefaultFont", 10, "bold"),
                  bg=c["ttk_bg"], fg=c["ttk_fg"]).pack(side="right", padx=(0, 10))
 
-        pane = tk.PanedWindow(win, orient="horizontal",
-                              bg=c["ttk_bg"], sashrelief="flat", sashwidth=6)
-        pane.pack(fill="both", expand=True, padx=10, pady=(4, 0))
-
-        text_opts = dict(
-            wrap="word", font=self.screenplay_font, padx=10, pady=10,
-            background=c["text_bg"], foreground=c["text_fg"],
-            insertbackground=c["insert"],
-            selectbackground=c["sel_bg"], selectforeground=c["sel_fg"],
-            inactiveselectbackground=c["sel_bg"],
-        )
-        orig_frame = tk.Frame(pane, bg=c["ttk_bg"])
-        orig_text = tk.Text(orig_frame, state="normal", **text_opts)
-        orig_scroll = tk.Scrollbar(orig_frame, command=orig_text.yview)
-        orig_text.configure(yscrollcommand=orig_scroll.set)
-        orig_scroll.pack(side="right", fill="y")
-        orig_text.pack(fill="both", expand=True)
-        orig_text.insert("1.0", data["original"])
-        orig_text.configure(state="disabled")
-        pane.add(orig_frame, stretch="always")
-
-        prop_frame = tk.Frame(pane, bg=c["ttk_bg"])
-        prop_text = tk.Text(prop_frame, **text_opts)
-        prop_scroll = tk.Scrollbar(prop_frame, command=prop_text.yview)
-        prop_text.configure(yscrollcommand=prop_scroll.set)
-        prop_scroll.pack(side="right", fill="y")
-        prop_text.pack(fill="both", expand=True)
-        prop_text.insert("1.0", data["proposed"])
-        pane.add(prop_frame, stretch="always")
-        self._cmp_prop_text = prop_text
-
+        # Button bar — packed BEFORE the pane so it is always visible
         btn_bar = tk.Frame(win, bg=c["ttk_bg"])
-        btn_bar.pack(fill="x", padx=10, pady=8)
+        btn_bar.pack(side="bottom", fill="x", padx=10, pady=8)
         tk.Label(btn_bar,
                  text="Edit the right pane freely, then Accept to replace the selection in the editor.",
                  bg=c["ttk_bg"], fg=c["status_fg"]).pack(side="left")
@@ -1001,6 +976,38 @@ class FilmPad:
         tk.Button(btn_bar, text="Accept Changes", width=16, command=_accept,
                   bg="#0e639c", fg="white", relief="flat",
                   activebackground="#1177bb").pack(side="right")
+
+        # Pane fills whatever space remains between header and button bar
+        pane = tk.PanedWindow(win, orient="horizontal",
+                              bg=c["ttk_bg"], sashrelief="flat", sashwidth=6)
+        pane.pack(side="top", fill="both", expand=True, padx=10, pady=(4, 0))
+
+        text_opts = dict(
+            wrap="word", font=self.screenplay_font, padx=10, pady=10,
+            background=c["text_bg"], foreground=c["text_fg"],
+            insertbackground=c["insert"],
+            selectbackground=c["sel_bg"], selectforeground=c["sel_fg"],
+            inactiveselectbackground=c["sel_bg"],
+        )
+        orig_frame = tk.Frame(pane, bg=c["ttk_bg"])
+        orig_text = tk.Text(orig_frame, state="normal", **text_opts)
+        orig_scroll = tk.Scrollbar(orig_frame, command=orig_text.yview)
+        orig_text.configure(yscrollcommand=orig_scroll.set)
+        orig_scroll.pack(side="right", fill="y")
+        orig_text.pack(fill="both", expand=True)
+        orig_text.insert("1.0", data["original"])
+        orig_text.configure(state="disabled")
+        pane.add(orig_frame, stretch="always")
+
+        prop_frame = tk.Frame(pane, bg=c["ttk_bg"])
+        prop_text = tk.Text(prop_frame, **text_opts)
+        prop_scroll = tk.Scrollbar(prop_frame, command=prop_text.yview)
+        prop_text.configure(yscrollcommand=prop_scroll.set)
+        prop_scroll.pack(side="right", fill="y")
+        prop_text.pack(fill="both", expand=True)
+        prop_text.insert("1.0", data["proposed"])
+        pane.add(prop_frame, stretch="always")
+        self._cmp_prop_text = prop_text
 
     def _transcribe_to_script_format(self) -> None:
         default_prompt = (
