@@ -803,11 +803,11 @@ class FilmPad:
         template_text = self._load_adaptation_template()
         parts: list[str] = [
             "You are an expert screenplay writer and story editor.\n",
-            "Use ONLY the context provided. Do not invent beyond what is given.\n",
-            "When filling any factual gap — character names, locations, relationships, "
-            "plot points, backstory — consult the PROJECT KNOWLEDGE section first and "
-            "treat it as ground truth. Do not invent or contradict anything present in "
-            "the PROJECT KNOWLEDGE.\n\n",
+            "Work ONLY with what is explicitly present in the SELECTED TEXT. "
+            "Do not add characters, events, or details that are not already there.\n",
+            "The PROJECT KNOWLEDGE is background reference only — use it to stay "
+            "consistent with names, locations, and tone, but do NOT import new content "
+            "from it or invent anything absent from the selected text.\n\n",
         ]
         if project_context:
             parts.append(
