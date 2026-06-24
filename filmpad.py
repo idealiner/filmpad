@@ -18,6 +18,7 @@ def resource_path(relative_path: str) -> Path:
 PREFERRED_SCREENPLAY_FONTS = [
     "Courier Prime",
     "Courier Screenplay",
+    "Courier 10 Pitch",
     "Courier New",
     "Courier",
     "Liberation Mono",
@@ -1003,29 +1004,23 @@ class FilmPad:
 
     def _transcribe_to_script_format(self) -> None:
         default_prompt = (
-            "You are a screenplay FORMATTER — not an editor or writer. "
-            "Your sole job is to apply standard screenplay layout to the source text. "
-            "Do not rewrite, summarise, condense, or omit anything.\n\n"
-            "ABSOLUTE RULES (breaking any of these is wrong):\n"
-            "1. PRESERVE EVERYTHING VERBATIM. Every sentence, phrase, and word from the "
-            "source must appear in the output unchanged — action lines, descriptions, "
-            "situational notes, all of it.\n"
-            "2. PRESERVE ALL DIALOGUE VERBATIM, word for word, whether or not it appears "
-            "in quotation marks.\n"
-            "3. PRESERVE ALL TRANSITIONS EXACTLY: \"CUT TO —\", \"INTERCUT —\", "
-            "\"FADE TO BLACK\", \"FADE OUT.\", etc. — copy them as-is on their own line.\n"
-            "4. PRESERVE ALL SCENE HEADINGS: INT., EXT., or bare location lines — keep "
-            "every one that exists; do NOT invent or remove any.\n"
-            "5. Do NOT merge, reorder, or split scenes.\n\n"
-            "FORMATTING rules (apply these without altering any text):\n"
-            "- Scene headings: INT./EXT. LOCATION – TIME (ALL CAPS, own line)\n"
-            "- Transitions (CUT TO, INTERCUT, FADE TO, etc.): ALL CAPS, own line\n"
-            "- Character names: ALL CAPS on their own line immediately before their speech\n"
-            "- Dialogue: lines directly below the character name\n"
-            "- Parentheticals: (in parentheses) between character name and dialogue, "
-            "only if present in the source — never invent them\n"
-            "- Action/description: plain paragraph lines\n\n"
-            "Output the formatted screenplay text only — no commentary, no preamble."
+            "Reformat the following text as a properly laid-out screenplay.\n\n"
+            "STRICT RULES — follow every one:\n"
+            "1. Preserve every word verbatim: action lines, descriptions, situational "
+            "notes, transitions, and all dialogue — do NOT cut, summarise, or paraphrase "
+            "anything, not even a single sentence.\n"
+            "2. Do NOT add anything that is not in the source: no notes, no "
+            "[bracketed placeholders], no 'Dialogue not provided', no confidence scores, "
+            "no commentary, no preamble — nothing.\n"
+            "3. Scene headings (INT./EXT. or bare location lines): ALL CAPS, own line.\n"
+            "4. Transitions (CUT TO, INTERCUT, FADE TO, SMASH CUT, etc.): "
+            "ALL CAPS, own line, copied exactly as written.\n"
+            "5. When a character speaks: place the character name in ALL CAPS on its own "
+            "line, then their words on the next line, copied letter-for-letter.\n"
+            "6. Everything else (description, action, stage directions) becomes an "
+            "action line — copy it word for word.\n"
+            "7. Do NOT merge, split, or reorder scenes.\n\n"
+            "Output the reformatted screenplay and nothing else."
         )
         self.writer_ai_prompt_text.delete("1.0", tk.END)
         self.writer_ai_prompt_text.insert("1.0", default_prompt)
