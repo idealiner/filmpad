@@ -194,6 +194,8 @@ class FilmPad:
         self._writer_ai_sel_start: str | None = None
         self._writer_ai_sel_end: str | None = None
         self._auto_transcript_running = False
+        self._auto_transcript_cancelled = False
+        self._auto_transcript_process: subprocess.Popen | None = None
         self._auto_transcript_btn: ttk.Button | None = None
         self._auto_transcript_block_start: str | None = None
         self._auto_transcript_block_end: str | None = None
@@ -1324,11 +1326,17 @@ class FilmPad:
     def _toggle_auto_transcript(self) -> None:
         if self._auto_transcript_running:
             self._auto_transcript_running = False
-            if self._writer_ai_process:
+            self._auto_transcript_cancelled = True
+            if self._auto_transcript_process:
                 try:
-                    self._writer_ai_process.kill()
+                    self._auto_transcript_process.kill()
                 except OSError:
                     pass
+            self._auto_transcript_process = None
+            self.writer_ai_generating = False
+            self._close_progress_overlay()
+            self._auto_transcript_block_start = None
+            self._auto_transcript_block_end = None
             self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
             if self._auto_transcript_btn:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
@@ -1340,6 +1348,8 @@ class FilmPad:
         if self.writer_ai_generating:
             self.writer_ai_status_var.set("Wait for current generation to finish.")
             return
+        self._auto_transcript_cancelled = False
+        self._auto_transcript_process = None
         try:
             start_pos = self.text.index(tk.INSERT)
         except tk.TclError:
@@ -1402,8 +1412,6 @@ class FilmPad:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
             return
         self.writer_ai_generating = True
-        self._writer_ai_cancelled = False
-        self._writer_ai_process = None
         self._show_writer_ai_progress_overlay(f"Auto transcript ({n} lines)", model)
         threading.Thread(
             target=self._auto_transcript_thread,
@@ -1467,7 +1475,7 @@ class FilmPad:
                 stderr=subprocess.PIPE,
                 env=env,
             )
-            self._writer_ai_process = proc
+            self._auto_transcript_process = proc
             out, _err = proc.communicate(input=prompt.encode("utf-8"))
             output = out.decode("utf-8", errors="replace")
             self.root.after(0, self._auto_transcript_finish, output, proc.returncode)
@@ -1477,8 +1485,8 @@ class FilmPad:
     def _auto_transcript_finish(self, output: str, returncode: int) -> None:
         self._close_progress_overlay()
         self.writer_ai_generating = False
-        self._writer_ai_process = None
-        if self._writer_ai_cancelled or not self._auto_transcript_running:
+        self._auto_transcript_process = None
+        if self._auto_transcript_cancelled or not self._auto_transcript_running:
             self._auto_transcript_running = False
             if self._auto_transcript_btn:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
@@ -1557,6 +1565,25 @@ class FilmPad:
         ttk.Button(outer, text="Cancel", command=self._cancel_writer_ai_edit).pack(pady=(12, 0))
 
     def _cancel_writer_ai_edit(self) -> None:
+        if self._auto_transcript_running:
+            self._auto_transcript_running = False
+            self._auto_transcript_cancelled = True
+            proc = self._auto_transcript_process
+            if proc is not None:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+            self._auto_transcript_process = None
+            self._auto_transcript_block_start = None
+            self._auto_transcript_block_end = None
+            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
+            if self._auto_transcript_btn:
+                self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
+            self._close_progress_overlay()
+            self.writer_ai_generating = False
+            self.writer_ai_status_var.set("Auto transcript cancelled.")
+            return
         self._writer_ai_cancelled = True
         proc = self._writer_ai_process
         if proc is not None:
