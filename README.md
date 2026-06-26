@@ -2,18 +2,48 @@
 
 FilmPad is a screenplay editor and local AI adaptation tool built with Python and Tkinter. It combines a formatted screenplay writer with a Local AI workspace for adapting prose source text into screenplay scenes, and a Writer AI assistant for in-editor rewrites — all powered by locally running Ollama models, with no cloud dependency.
 
-## Download (Linux AppImage)
+## Download
 
-- Direct download (v0.1): https://github.com/idealiner/filmpad/releases/download/v0.1/FilmPad-v0.1-x86_64.AppImage
-- Release page: https://github.com/idealiner/filmpad/releases/tag/v0.1
-- Public download page: https://idealiner.github.io/filmpad/
+> **Latest release: v0.2** — [All releases](https://github.com/idealiner/filmpad/releases)
 
-Quick run:
+| Platform | Download |
+|----------|----------|
+| **Linux x86_64** | [FilmPad-v0.2-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.2/FilmPad-v0.2-x86_64.AppImage) |
+
+Windows and macOS builds are not yet available. The app can be run from source on any platform — see [Running from source](#running-from-source) below.
+
+Quick start (Linux):
 
 ```bash
-chmod +x FilmPad-v0.1-x86_64.AppImage
-./FilmPad-v0.1-x86_64.AppImage
+chmod +x FilmPad-v0.2-x86_64.AppImage
+./FilmPad-v0.2-x86_64.AppImage
 ```
+
+The AppImage bundles Python and Tkinter. Only [Ollama](https://ollama.com) needs to be installed separately.
+
+---
+
+## Releases
+
+### v0.2 — Dark Theme, Writer AI & Screenplay Formatter
+*2026-06-25*
+
+- **Dark theme** — full dark mode on by default; system accent colour (Cinnamon/GNOME) used for selection highlights; toggle between Light and Dark in the toolbar
+- **Writer AI comparison pane** — AI output opens in a side-by-side Original vs Proposed review window before anything is changed in the document; right pane is editable before accepting
+- **Screenplay auto-formatter** — accepting AI output automatically applies screenplay tags (Scene Heading, Character, Dialogue, Transition, Action) with correct WGA-standard indentation
+- **Transcribe into Script Format** — one-click action with a strict verbatim prompt; preserves all content, transitions, and dialogue without summarising
+- **Project knowledge folder** — used as background reference to keep names and locations consistent; the AI is explicitly prevented from importing new content from it
+- **Icon improvements** — crisp SVG + PNG icons at all sizes; Plank dock grouping fixed
+
+### v0.1 — Initial release
+
+- Screenplay editor with format presets (Scene Heading, Action, Character, Dialogue, Parenthetical, Transition, Shot)
+- Local AI tab for scene-by-scene adaptation from prose source
+- Writer AI panel with free-form prompt and project knowledge folder
+- Spell check, read-aloud, font picker
+- Linux AppImage
+
+---
 
 ## Dependencies
 
@@ -61,12 +91,25 @@ ollama serve   # or: systemctl start ollama
 
 ## Features
 
-- **Writer tab** — screenplay editor with format presets (Scene Heading, Action, Character, Dialogue, Parenthetical, Transition, Shot), font picker, spell check, and read-aloud
-- **Writer AI panel** — collapsible right-side panel with free-form prompt, project knowledge folder context, and a one-click "Transcribe into Script Format" action; replaces selected text with AI output
+- **Writer tab** — screenplay editor with format presets (Scene Heading, Action, Character, Dialogue, Parenthetical, Transition, Shot), font picker (Courier 10 Pitch preferred), spell check, and read-aloud
+- **Dark / Light theme** — full dark mode by default; system accent colour used for selections; toggle in toolbar
+- **Writer AI panel** — collapsible right-side panel; free-form prompt; project knowledge folder for context; **Transcribe into Script Format** action; side-by-side comparison pane before any edit is applied; **Review Last Output** to re-open the last comparison
+- **Screenplay auto-formatter** — accepted AI output is automatically tagged with screenplay styles (Scene Heading, Character, Dialogue, Transition, Action) matching WGA standard indentation
 - **Local AI tab** — split-pane workspace: load a prose source file on the right, open a destination screenplay on the left, select a line range, pick a model, and generate scene-by-scene adaptations with insertion-point control
 - **Progress overlay** — elapsed timer and Cancel button on all generation operations
-- **Tab auto-save / live reload** — switching to Local AI auto-saves the Writer file; switching back reloads it, keeping both panes in sync
+- **Tab auto-save / live reload** — switching to Local AI auto-saves the Writer file; switching back reloads it
 - **Collapsible sidebars** — both the Local AI wizard panel and Writer AI panel fold away with a toggle button
+
+## Running from source
+
+## Running from source
+
+```bash
+git clone https://github.com/idealiner/filmpad.git
+cd filmpad
+pip install pyinstaller  # only needed if building AppImage
+python3 filmpad.py
+```
 
 ## Repository Layout
 
