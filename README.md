@@ -9,6 +9,8 @@ FilmPad is a screenplay editor and local AI adaptation tool built with Python an
 | Platform | Download |
 |----------|----------|
 | **Linux x86_64** | [FilmPad-v0.4-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.4/FilmPad-v0.4-x86_64.AppImage) |
+| **Diagnostics** | [doctor.sh](https://github.com/idealiner/filmpad/releases/download/v0.4/doctor.sh) |
+| **Quickstart** | [QUICKSTART-v0.4.md](https://github.com/idealiner/filmpad/releases/download/v0.4/QUICKSTART-v0.4.md) |
 
 Windows and macOS builds are not yet available. The app can be run from source on any platform — see [Running from source](#running-from-source) below.
 
@@ -20,6 +22,8 @@ chmod +x FilmPad-v0.4-x86_64.AppImage
 ```
 
 The AppImage bundles Python and Tkinter. Only [Ollama](https://ollama.com) needs to be installed separately.
+
+If the app does not launch on first try, download and run `doctor.sh` from the table above.
 
 ---
 
