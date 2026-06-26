@@ -324,6 +324,14 @@
       </table>
     </div>
 
+    <h2>Release Maintainer Checklist</h2>
+    <ul>
+      <li>Build: <code>APPIMAGE_EXTRACT_AND_RUN=1 ./build-appimage.sh</code></li>
+      <li>Checksum: <code>sha256sum FilmPad-v0.4-x86_64.AppImage &gt; FilmPad-v0.4-x86_64.AppImage.sha256</code></li>
+      <li>Upload both files to the GitHub release tag <code>v0.4</code></li>
+      <li>Verify direct download link returns HTTP 200 before announcing the release</li>
+    </ul>
+
     <p class="footnote">
       Source: <a href="https://github.com/idealiner/filmpad" style="color:var(--accent)">github.com/idealiner/filmpad</a> &mdash; MIT licence
     </p>
