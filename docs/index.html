@@ -178,6 +178,38 @@
 
     .deps td:first-child { color: var(--text); font-weight: 600; }
 
+    .quickstart {
+      margin-top: 24px;
+      padding: 18px;
+      border: 1px solid rgba(125, 211, 252, 0.28);
+      border-radius: 14px;
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .quickstart h3 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+      color: var(--text);
+      letter-spacing: 0.01em;
+    }
+
+    .quickstart ol {
+      margin: 0;
+      padding-left: 1.3em;
+      color: var(--text);
+      line-height: 1.75;
+    }
+
+    .quickstart li {
+      margin-bottom: 8px;
+    }
+
+    .quickstart p {
+      margin: 10px 0 0;
+      font-size: 0.96rem;
+      color: var(--muted);
+    }
+
     .footnote {
       margin-top: 22px;
       color: var(--muted);
@@ -226,12 +258,29 @@
 
     <div class="actions">
       <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.4/FilmPad-v0.4-x86_64.AppImage">&#8659; Download AppImage</a>
+      <a class="button secondary" href="https://raw.githubusercontent.com/idealiner/filmpad/main/QUICKSTART-v0.4.md">Quickstart Guide</a>
+      <a class="button secondary" href="https://raw.githubusercontent.com/idealiner/filmpad/main/doctor.sh">Download doctor.sh</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad">GitHub Repository</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad/releases">All Releases</a>
     </div>
 
+    <section class="quickstart" aria-label="Get started quickly">
+      <h3>Start in 60 seconds</h3>
+      <ol>
+        <li>Download the AppImage and double-click it.</li>
+        <li>If it does not open, run <code>doctor.sh</code> to see exactly what is missing.</li>
+        <li>Copy and run the install commands shown by <code>doctor.sh</code>.</li>
+        <li>Launch again. Writer mode works even if AI dependencies are skipped.</li>
+      </ol>
+      <p>No README digging required. The two buttons above are enough for first-time setup.</p>
+    </section>
+
     <p class="footnote">
       <code>chmod +x FilmPad-v0.4-x86_64.AppImage &amp;&amp; ./FilmPad-v0.4-x86_64.AppImage</code>
+    </p>
+
+    <p class="footnote">
+      <code>chmod +x doctor.sh &amp;&amp; ./doctor.sh</code>
     </p>
 
     <h2>What&rsquo;s new in v0.4</h2>
