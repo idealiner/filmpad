@@ -196,6 +196,7 @@ class FilmPad:
         self._auto_transcript_running = False
         self._auto_transcript_cancelled = False
         self._auto_transcript_process: subprocess.Popen | None = None
+        self._auto_transcript_safe_mode_var = tk.BooleanVar(value=True)
         self._auto_transcript_btn: ttk.Button | None = None
         self._auto_transcript_block_start: str | None = None
         self._auto_transcript_block_end: str | None = None
@@ -1030,6 +1031,11 @@ class FilmPad:
             command=self._toggle_auto_transcript,
         )
         self._auto_transcript_btn.pack(fill="x", pady=(0, 0))
+        ttk.Checkbutton(
+            self._writer_ai_content,
+            text="Safe mode (smaller steps, slower, more stable)",
+            variable=self._auto_transcript_safe_mode_var,
+        ).pack(anchor="w", pady=(4, 0))
 
         ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 6))
         ttk.Label(
@@ -1322,6 +1328,63 @@ class FilmPad:
         re.IGNORECASE,
     )
     _AT_MAX_CHARS = 2200  # max chars per block (leaves headroom for prompt)
+    _AT_SAFE_MAX_CHARS = 1200
+    _AT_NEXT_STEP_DELAY_MS = 300
+    _AT_SAFE_NEXT_STEP_DELAY_MS = 1200
+
+    def _auto_transcript_environment_risks(self) -> list[str]:
+        risks: list[str] = []
+        try:
+            root_source = subprocess.run(
+                ["findmnt", "-n", "-o", "SOURCE", "/"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            ).stdout.strip()
+            if root_source.startswith("/dev/sd"):
+                risks.append("Root filesystem is on /dev/sd* (often external/USB on this hardware).")
+                try:
+                    tran = subprocess.run(
+                        ["lsblk", "-ndo", "TRAN", root_source],
+                        capture_output=True,
+                        text=True,
+                        timeout=2,
+                    ).stdout.strip().lower()
+                    if "usb" in tran:
+                        risks.append("Root filesystem transport appears to be USB.")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            mounts = subprocess.run(
+                ["findmnt", "-rn", "-o", "TARGET,SOURCE"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            ).stdout.splitlines()
+            media_mounts = [line for line in mounts if line.startswith("/media/")]
+            if media_mounts:
+                risks.append("Removable/media mounts are active under /media.")
+        except Exception:
+            pass
+        return risks
+
+    def _confirm_auto_transcript_environment(self) -> bool:
+        risks = self._auto_transcript_environment_risks()
+        if not risks:
+            return True
+        msg = (
+            "Auto Transcript can stress GPU/storage while Ollama is running.\n\n"
+            "Detected risk factors:\n- " + "\n- ".join(risks) + "\n\n"
+            "Recommended:\n"
+            "- Keep Safe mode enabled\n"
+            "- Close heavy apps\n"
+            "- Prefer running Linux from an internal drive\n\n"
+            "Start Auto Transcript anyway?"
+        )
+        return messagebox.askyesno("Auto Transcript safety warning", msg)
 
     def _toggle_auto_transcript(self) -> None:
         if self._auto_transcript_running:
@@ -1347,6 +1410,9 @@ class FilmPad:
     def _start_auto_transcript(self) -> None:
         if self.writer_ai_generating:
             self.writer_ai_status_var.set("Wait for current generation to finish.")
+            return
+        if not self._confirm_auto_transcript_environment():
+            self.writer_ai_status_var.set("Auto transcript cancelled by safety warning.")
             return
         self._auto_transcript_cancelled = False
         self._auto_transcript_process = None
@@ -1450,7 +1516,8 @@ class FilmPad:
             elif (self._AT_SLUG_RE.match(stripped) or self._AT_TRANS_RE.match(stripped)) \
                     and accumulated > 120:
                 last_scene = current   # break BEFORE this heading/transition
-            if accumulated >= self._AT_MAX_CHARS:
+            max_chars = self._AT_SAFE_MAX_CHARS if self._auto_transcript_safe_mode_var.get() else self._AT_MAX_CHARS
+            if accumulated >= max_chars:
                 end = last_scene or last_blank or line_end
                 break
             if self.text.compare(next_line, ">=", "end-1c"):
@@ -1525,7 +1592,8 @@ class FilmPad:
             self.writer_ai_status_var.set(f"Auto transcript error: {exc}")
             return
         # Small pause then process next block
-        self.root.after(300, self._auto_transcript_step)
+        delay = self._AT_SAFE_NEXT_STEP_DELAY_MS if self._auto_transcript_safe_mode_var.get() else self._AT_NEXT_STEP_DELAY_MS
+        self.root.after(delay, self._auto_transcript_step)
 
     def _show_writer_ai_progress_overlay(self, detail: str, model: str) -> None:
         self._progress_win = tk.Toplevel(self.root)
