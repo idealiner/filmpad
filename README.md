@@ -4,19 +4,19 @@ FilmPad is a screenplay editor and local AI adaptation tool built with Python an
 
 ## Download
 
-> **Latest release: v0.2** — [All releases](https://github.com/idealiner/filmpad/releases)
+> **Latest release: v0.4** — [All releases](https://github.com/idealiner/filmpad/releases)
 
 | Platform | Download |
 |----------|----------|
-| **Linux x86_64** | [FilmPad-v0.2-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.2/FilmPad-v0.2-x86_64.AppImage) |
+| **Linux x86_64** | [FilmPad-v0.4-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.4/FilmPad-v0.4-x86_64.AppImage) |
 
 Windows and macOS builds are not yet available. The app can be run from source on any platform — see [Running from source](#running-from-source) below.
 
 Quick start (Linux):
 
 ```bash
-chmod +x FilmPad-v0.2-x86_64.AppImage
-./FilmPad-v0.2-x86_64.AppImage
+chmod +x FilmPad-v0.4-x86_64.AppImage
+./FilmPad-v0.4-x86_64.AppImage
 ```
 
 The AppImage bundles Python and Tkinter. Only [Ollama](https://ollama.com) needs to be installed separately.
@@ -24,6 +24,15 @@ The AppImage bundles Python and Tkinter. Only [Ollama](https://ollama.com) needs
 ---
 
 ## Releases
+
+### v0.4 — Launch Reliability and First-Time Setup
+*2026-06-26*
+
+- **Launch fallback chain** — launcher now tries AppImage first, then `dist/filmpad`, then `python3 filmpad.py`
+- **Desktop-visible launch errors** — failed starts now show GUI error dialogs (Zenity/KDialog/XMessage fallback)
+- **Dependency-first startup checks** — Python is checked first, with distro-specific install hint commands
+- **Guided first-time setup** — startup questionnaire can install Ollama, missing models, read-aloud tool (`spd-say`), and spellcheck tool (`aspell`)
+- **Safe dependency testing mode** — set `FILMPAD_TEST_NO_PYTHON=1` to simulate a missing Python dependency without uninstalling system Python
 
 ### v0.2 — Dark Theme, Writer AI & Screenplay Formatter
 *2026-06-25*
@@ -110,6 +119,33 @@ cd filmpad
 pip install pyinstaller  # only needed if building AppImage
 python3 filmpad.py
 ```
+
+## GitHub Release Delivery (v0.4)
+
+Build and prepare artifacts:
+
+```bash
+./build-appimage.sh
+sha256sum FilmPad-v0.4-x86_64.AppImage > FilmPad-v0.4-x86_64.AppImage.sha256
+```
+
+Tag and push:
+
+```bash
+git add .
+git commit -m "release: v0.4"
+git tag -a v0.4 -m "FilmPad v0.4"
+git push origin main
+git push origin v0.4
+```
+
+Create GitHub release:
+
+- Tag: `v0.4`
+- Title: `FilmPad v0.4`
+- Attach: `FilmPad-v0.4-x86_64.AppImage`
+- Attach: `FilmPad-v0.4-x86_64.AppImage.sha256`
+- Release notes: copy the `v0.4` section from this README
 
 ## Repository Layout
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import threading
 import time
+import traceback
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
@@ -225,6 +227,8 @@ class FilmPad:
 
         self._set_window_icon()
         self._build_menu()
+        # Show setup helper shortly after launch so startup stays responsive.
+        self.root.after(800, self._prompt_local_ai_dependency_setup)
 
     def _available_screenplay_fonts(self) -> list[str]:
         font_families = set(tkfont.families(self.root))
@@ -690,6 +694,249 @@ class FilmPad:
         self.root.bind("<Control-o>", lambda _e: self.open_file())
         self.root.bind("<Control-s>", lambda _e: self.save_file())
         self.root.bind("<F7>", lambda _e: self._check_spelling())
+
+    def _get_installed_ollama_models(self) -> set[str]:
+        if not shutil.which("ollama"):
+            return set()
+        try:
+            result = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return set()
+        if result.returncode != 0:
+            return set()
+        models: set[str] = set()
+        for line in result.stdout.splitlines()[1:]:
+            parts = line.split()
+            if parts:
+                models.add(parts[0].strip())
+        return models
+
+    def _prompt_local_ai_dependency_setup(self) -> None:
+        has_ollama = shutil.which("ollama") is not None
+        installed_models = self._get_installed_ollama_models() if has_ollama else set()
+        missing_models = [m for m in LOCAL_AI_MODELS if m not in installed_models]
+        has_spd_say = shutil.which("spd-say") is not None
+        has_spell_tool = any(shutil.which(tool) for tool in ("aspell", "hunspell"))
+
+        if has_ollama and not missing_models and has_spd_say and has_spell_tool:
+            return
+
+        if not has_ollama:
+            self.local_ai_status_var.set("Local AI setup needed: Ollama is not installed.")
+        elif missing_models:
+            self.local_ai_status_var.set(
+                "Local AI setup needed: missing models " + ", ".join(missing_models)
+            )
+        elif not has_spd_say:
+            self.local_ai_status_var.set("Setup suggestion: install spd-say for read aloud.")
+        elif not has_spell_tool:
+            self.local_ai_status_var.set("Setup suggestion: install aspell or hunspell for spellcheck.")
+
+        summary_lines = []
+        if not has_ollama:
+            summary_lines.append("- Ollama is missing")
+        if missing_models:
+            summary_lines.append("- Missing models: " + ", ".join(missing_models))
+        if not has_spd_say:
+            summary_lines.append("- Read-aloud tool missing: spd-say")
+        if not has_spell_tool:
+            summary_lines.append("- Spellcheck tool missing: aspell/hunspell")
+        summary = "\n".join(summary_lines)
+
+        if not messagebox.askyesno(
+            "FilmPad first-time setup",
+            "FilmPad detected missing optional/required dependencies:\n\n"
+            f"{summary}\n\n"
+            "Open guided setup now?",
+        ):
+            return
+
+        self._show_local_ai_setup_dialog(
+            ollama_missing=not has_ollama,
+            missing_models=missing_models,
+            spd_say_missing=not has_spd_say,
+            spell_tool_missing=not has_spell_tool,
+        )
+
+    def _show_local_ai_setup_dialog(
+        self,
+        ollama_missing: bool,
+        missing_models: list[str],
+        spd_say_missing: bool,
+        spell_tool_missing: bool,
+    ) -> None:
+        win = tk.Toplevel(self.root)
+        win.title("FilmPad setup")
+        win.transient(self.root)
+        win.resizable(False, False)
+        win.grab_set()
+
+        frame = ttk.Frame(win, padding=14)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame,
+            text="Install missing FilmPad dependencies",
+            font=("TkDefaultFont", 10, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(
+            frame,
+            text="Select what to install. A terminal will open and run the selected commands.",
+            wraplength=430,
+        ).pack(anchor="w", pady=(4, 10))
+
+        install_ollama_var = tk.BooleanVar(value=ollama_missing)
+        install_spd_say_var = tk.BooleanVar(value=spd_say_missing)
+        install_spell_var = tk.BooleanVar(value=spell_tool_missing)
+        model_vars: dict[str, tk.BooleanVar] = {
+            model: tk.BooleanVar(value=True) for model in missing_models
+        }
+
+        if ollama_missing:
+            ttk.Checkbutton(
+                frame,
+                text="Install Ollama",
+                variable=install_ollama_var,
+            ).pack(anchor="w", pady=(0, 8))
+
+        if missing_models:
+            ttk.Label(frame, text="Install models:").pack(anchor="w")
+            for model in missing_models:
+                ttk.Checkbutton(
+                    frame,
+                    text=model,
+                    variable=model_vars[model],
+                ).pack(anchor="w")
+
+        if spd_say_missing or spell_tool_missing:
+            ttk.Label(frame, text="Install system tools:").pack(anchor="w", pady=(8, 0))
+            if spd_say_missing:
+                ttk.Checkbutton(
+                    frame,
+                    text="speech-dispatcher (provides spd-say for Read Aloud)",
+                    variable=install_spd_say_var,
+                ).pack(anchor="w")
+            if spell_tool_missing:
+                ttk.Checkbutton(
+                    frame,
+                    text="aspell (spellcheck)",
+                    variable=install_spell_var,
+                ).pack(anchor="w")
+
+        status_var = tk.StringVar(value="")
+        ttk.Label(frame, textvariable=status_var, wraplength=430).pack(anchor="w", pady=(10, 0))
+
+        btn_row = ttk.Frame(frame)
+        btn_row.pack(fill="x", pady=(12, 0))
+
+        def _run_setup() -> None:
+            selected_models = [
+                model for model, var in model_vars.items() if var.get()
+            ]
+            install_ollama = bool(ollama_missing and install_ollama_var.get())
+            install_spd_say = bool(spd_say_missing and install_spd_say_var.get())
+            install_spell = bool(spell_tool_missing and install_spell_var.get())
+            if not install_ollama and not selected_models and not install_spd_say and not install_spell:
+                status_var.set("Nothing selected.")
+                return
+
+            cmd_lines = ["set -e"]
+            package_names: list[str] = []
+            if install_spd_say:
+                package_names.append("speech-dispatcher")
+            if install_spell:
+                package_names.append("aspell")
+            if package_names:
+                cmd_lines.extend(self._build_package_install_script(package_names))
+            if install_ollama:
+                cmd_lines.extend(
+                    [
+                        "echo 'Installing Ollama...'",
+                        "curl -fsSL https://ollama.com/install.sh | sh",
+                    ]
+                )
+            if selected_models:
+                cmd_lines.extend(
+                    [
+                        "if ! command -v ollama >/dev/null 2>&1; then",
+                        "  echo 'Ollama was not found on PATH after setup.'",
+                        "  exit 1",
+                        "fi",
+                        "if ! ollama list >/dev/null 2>&1; then",
+                        "  if command -v systemctl >/dev/null 2>&1; then",
+                        "    sudo systemctl start ollama || true",
+                        "  fi",
+                        "fi",
+                        "if ! ollama list >/dev/null 2>&1; then",
+                        "  nohup ollama serve >/tmp/ollama-serve.log 2>&1 &",
+                        "  sleep 2",
+                        "fi",
+                    ]
+                )
+                for model in selected_models:
+                    cmd_lines.append(f"ollama pull {shlex.quote(model)}")
+            cmd_lines.append("echo")
+            cmd_lines.append("echo 'Setup complete. You can close this terminal.'")
+            command_script = "\n".join(cmd_lines)
+
+            launched = self._open_setup_terminal(command_script)
+            if launched:
+                status_var.set("Setup launched in terminal.")
+                win.destroy()
+            else:
+                status_var.set("No terminal emulator found. Run setup commands manually.")
+                messagebox.showinfo(
+                    "Manual setup",
+                    "No terminal emulator was detected. Run these commands manually:\n\n"
+                    + command_script,
+                )
+
+        ttk.Button(btn_row, text="Run Setup", command=_run_setup).pack(side="left")
+        ttk.Button(btn_row, text="Skip", command=win.destroy).pack(side="left", padx=(8, 0))
+
+    def _build_package_install_script(self, packages: list[str]) -> list[str]:
+        quoted = " ".join(shlex.quote(pkg) for pkg in packages)
+        return [
+            "echo 'Installing system packages...'",
+            "if command -v apt-get >/dev/null 2>&1; then",
+            "  sudo apt-get update",
+            f"  sudo apt-get install -y {quoted}",
+            "elif command -v dnf >/dev/null 2>&1; then",
+            f"  sudo dnf install -y {quoted}",
+            "elif command -v pacman >/dev/null 2>&1; then",
+            f"  sudo pacman -Sy --noconfirm {quoted}",
+            "elif command -v zypper >/dev/null 2>&1; then",
+            f"  sudo zypper install -y {quoted}",
+            "else",
+            "  echo 'Unsupported package manager. Install manually:'",
+            f"  echo '  {quoted}'",
+            "  exit 1",
+            "fi",
+        ]
+
+    def _open_setup_terminal(self, script: str) -> bool:
+        shell_cmd = f"{script}\nexec bash"
+        candidates = [
+            ["x-terminal-emulator", "-e", "bash", "-lc", shell_cmd],
+            ["gnome-terminal", "--", "bash", "-lc", shell_cmd],
+            ["konsole", "-e", "bash", "-lc", shell_cmd],
+            ["xfce4-terminal", "--hold", "-e", f"bash -lc {shlex.quote(shell_cmd)}"],
+            ["xterm", "-hold", "-e", "bash", "-lc", shell_cmd],
+        ]
+        for cmd in candidates:
+            if shutil.which(cmd[0]) is None:
+                continue
+            try:
+                subprocess.Popen(cmd)
+                return True
+            except OSError:
+                continue
+        return False
 
     # ------------------------------------------------------------------
     # Writer AI panel
@@ -2372,19 +2619,36 @@ def _install_icons_early(exec_cmd: str) -> None:
 
 def main() -> None:
     import os
-    appimage_path = os.environ.get("APPIMAGE")
-    exec_cmd = appimage_path if appimage_path else f"python3 {Path(sys.argv[0]).resolve()}"
-    # Install icons and .desktop BEFORE the window appears so Plank sees them immediately
-    _install_icons_early(exec_cmd)
-    root = tk.Tk(className="Filmpad")  # WM_CLASS class = Filmpad, matches StartupWMClass in .desktop
-    app = FilmPad(root)
-    app._set_title()
-    # Start in dark mode by default
-    app._dark_mode = True
-    app._apply_theme()
-    app._theme_btn.configure(text="\u2600 Light")
-    root.protocol("WM_DELETE_WINDOW", app.on_exit)
-    root.mainloop()
+    try:
+        appimage_path = os.environ.get("APPIMAGE")
+        exec_cmd = appimage_path if appimage_path else f"python3 {Path(sys.argv[0]).resolve()}"
+        # Install icons and .desktop BEFORE the window appears so Plank sees them immediately
+        _install_icons_early(exec_cmd)
+        root = tk.Tk(className="Filmpad")  # WM_CLASS class = Filmpad, matches StartupWMClass in .desktop
+        app = FilmPad(root)
+        app._set_title()
+        # Start in dark mode by default
+        app._dark_mode = True
+        app._apply_theme()
+        app._theme_btn.configure(text="\u2600 Light")
+        root.protocol("WM_DELETE_WINDOW", app.on_exit)
+        root.mainloop()
+    except Exception:
+        cache_dir = Path.home() / ".cache" / "filmpad"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        log_path = cache_dir / "launch-error.log"
+        log_path.write_text(traceback.format_exc(), encoding="utf-8")
+        try:
+            fallback = tk.Tk()
+            fallback.withdraw()
+            messagebox.showerror(
+                "FilmPad launch failed",
+                "FilmPad could not start.\n\n"
+                f"Error details were saved to:\n{log_path}",
+            )
+            fallback.destroy()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
