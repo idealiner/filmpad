@@ -38,6 +38,7 @@ SCREENPLAY_FORMATS = {
 }
 
 SPELL_TAG = "misspelled"
+AUTO_TRANSCRIPT_TAG = "auto_transcript_block"
 LOCAL_AI_SOURCE_RANGE_TAG = "local_ai_source_range"
 LOCAL_AI_RESULT_HIGHLIGHT_TAG = "local_ai_result_highlight"
 LOCAL_AI_MODELS = [
@@ -51,6 +52,7 @@ LIGHT_COLORS = {
     "sel_bg": "#4a90d9",     "sel_fg": "white",
     "gutter_bg": "#f0f0f0",  "gutter_fg": "#666666",
     "result_hl": "#fff2b3",  "source_hl": "#d9ebff",
+    "at_hl": "#ffe8c0",
     "spell_fg": "#cc0000",   "status_fg": "#555555",
     "ttk_bg": "#f0f0f0",     "ttk_fg": "#000000",
     "entry_bg": "white",
@@ -60,6 +62,7 @@ DARK_COLORS = {
     "sel_bg": "#264f78",     "sel_fg": "#ffffff",
     "gutter_bg": "#252526",  "gutter_fg": "#858585",
     "result_hl": "#3a3a00",  "source_hl": "#1a3550",
+    "at_hl": "#332200",
     "spell_fg": "#f48771",   "status_fg": "#aaaaaa",
     "ttk_bg": "#2b2b2b",     "ttk_fg": "#d4d4d4",
     "entry_bg": "#3c3c3c",
@@ -188,6 +191,10 @@ class FilmPad:
         self._writer_ai_process: subprocess.Popen | None = None
         self._writer_ai_sel_start: str | None = None
         self._writer_ai_sel_end: str | None = None
+        self._auto_transcript_running = False
+        self._auto_transcript_btn: ttk.Button | None = None
+        self._auto_transcript_block_start: str | None = None
+        self._auto_transcript_block_end: str | None = None
 
         self._build_writer_ai_panel()
         self.scroll.pack(side="right", fill="y")
@@ -494,6 +501,9 @@ class FilmPad:
         c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
         widget.tag_configure(SPELL_TAG, underline=True, foreground=c["spell_fg"])
         widget.tag_lower(SPELL_TAG)
+        # Auto-transcript active block -- amber background, raised above screenplay tags
+        widget.tag_configure(AUTO_TRANSCRIPT_TAG, background=c["at_hl"])
+        widget.tag_raise(AUTO_TRANSCRIPT_TAG)
 
     def _configure_screenplay_tags(self) -> None:
         self._configure_screenplay_tags_for_widget(self.text)
@@ -752,6 +762,25 @@ class FilmPad:
         ttk.Button(
             self._writer_ai_content, text="Save", command=self.save_file
         ).pack(fill="x", pady=(4, 0))
+
+        ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 4))
+        ttk.Label(
+            self._writer_ai_content,
+            text="Auto Transcript",
+            font=("TkDefaultFont", 9, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(
+            self._writer_ai_content,
+            text="Place cursor at start point, then run. Processes the whole document block by block without review.",
+            wraplength=240,
+            font=("TkDefaultFont", 8),
+        ).pack(anchor="w", pady=(2, 4))
+        self._auto_transcript_btn = ttk.Button(
+            self._writer_ai_content,
+            text="\u25b6 Auto Transcript",
+            command=self._toggle_auto_transcript,
+        )
+        self._auto_transcript_btn.pack(fill="x", pady=(0, 0))
 
         ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 6))
         ttk.Label(
@@ -1032,6 +1061,216 @@ class FilmPad:
         self.writer_ai_prompt_text.delete("1.0", tk.END)
         self.writer_ai_prompt_text.insert("1.0", default_prompt)
         self._run_writer_ai_edit()
+
+    # ------------------------------------------------------------------
+    # Auto Transcript (pseudo-agent loop)
+    # ------------------------------------------------------------------
+
+    _AT_SLUG_RE = re.compile(r"^(INT\.?|EXT\.?|INT\./EXT\.?|I/E\.?)\s", re.IGNORECASE)
+    _AT_TRANS_RE = re.compile(
+        r"^(FADE\s+(IN|OUT|TO)|CUT\s+TO|SMASH\s+CUT|MATCH\s+CUT|"
+        r"DISSOLVE\s+TO|WIPE\s+TO|INTERCUT|TIME\s+CUT|JUMP\s+CUT)",
+        re.IGNORECASE,
+    )
+    _AT_MAX_CHARS = 2200  # max chars per block (leaves headroom for prompt)
+
+    def _toggle_auto_transcript(self) -> None:
+        if self._auto_transcript_running:
+            self._auto_transcript_running = False
+            if self._writer_ai_process:
+                try:
+                    self._writer_ai_process.kill()
+                except OSError:
+                    pass
+            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
+            if self._auto_transcript_btn:
+                self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
+            self.writer_ai_status_var.set("Auto transcript stopped.")
+        else:
+            self._start_auto_transcript()
+
+    def _start_auto_transcript(self) -> None:
+        if self.writer_ai_generating:
+            self.writer_ai_status_var.set("Wait for current generation to finish.")
+            return
+        try:
+            start_pos = self.text.index(tk.INSERT)
+        except tk.TclError:
+            start_pos = "1.0"
+        # Use a floating mark so the position survives text insertions
+        self.text.mark_set("_at_cursor", start_pos)
+        self.text.mark_gravity("_at_cursor", "right")
+        self._auto_transcript_running = True
+        if self._auto_transcript_btn:
+            self._auto_transcript_btn.configure(text="\u23f9 Stop Auto Transcript")
+        self._auto_transcript_step()
+
+    def _auto_transcript_step(self) -> None:
+        """Kick off the next block, or finish if nothing remains."""
+        if not self._auto_transcript_running:
+            return
+        if self.writer_ai_generating:
+            self.root.after(600, self._auto_transcript_step)
+            return
+        result = self._auto_transcript_get_block()
+        if result is None:
+            self._auto_transcript_running = False
+            if self._auto_transcript_btn:
+                self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
+            self.writer_ai_status_var.set("Auto transcript complete.")
+            return
+        block_text, block_start, block_end = result
+        self._auto_transcript_block_start = block_start
+        self._auto_transcript_block_end = block_end
+        # Highlight the block being processed
+        self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
+        self.text.tag_add(AUTO_TRANSCRIPT_TAG, block_start, block_end)
+        self.text.see(block_start)
+        n = block_text.count("\n") + 1
+        self.writer_ai_status_var.set(f"Auto transcript: processing {n} lines\u2026")
+        # Reuse the transcribe prompt text
+        prompt = (
+            "Reformat the following text as a properly laid-out screenplay.\n\n"
+            "STRICT RULES:\n"
+            "1. Preserve every word verbatim: action lines, descriptions, situational "
+            "notes, transitions, and all dialogue \u2014 do NOT cut, summarise, or paraphrase "
+            "anything, not even a single sentence.\n"
+            "2. Do NOT add anything not in the source: no notes, no [bracketed placeholders], "
+            "no \u2018Dialogue not provided\u2019, no confidence scores, no commentary, no preamble \u2014 nothing.\n"
+            "3. Scene headings (INT./EXT. or bare location lines): ALL CAPS, own line.\n"
+            "4. Transitions (CUT TO, INTERCUT, FADE TO, etc.): ALL CAPS, own line, copied exactly as written.\n"
+            "5. When a character speaks: put the character name in ALL CAPS on its own line, "
+            "then their words on the next line, copied letter-for-letter.\n"
+            "6. Everything else becomes an action line \u2014 copy it word for word.\n"
+            "7. Do NOT merge, split, or reorder scenes.\n\n"
+            "Output the reformatted screenplay and nothing else."
+        )
+        project_context = self._read_project_knowledge()
+        full_prompt = self._build_writer_ai_prompt(block_text, prompt, project_context)
+        model = self.writer_ai_model_var.get().strip()
+        if not model:
+            self.writer_ai_status_var.set("Auto transcript: select a model first.")
+            self._auto_transcript_running = False
+            if self._auto_transcript_btn:
+                self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
+            return
+        self.writer_ai_generating = True
+        self._writer_ai_cancelled = False
+        self._writer_ai_process = None
+        self._show_writer_ai_progress_overlay(f"Auto transcript ({n} lines)", model)
+        threading.Thread(
+            target=self._auto_transcript_thread,
+            args=(model, full_prompt),
+            daemon=True,
+        ).start()
+
+    def _auto_transcript_get_block(self) -> tuple[str, str, str] | None:
+        """Return (block_text, start_idx, end_idx) for the next block, or None if done."""
+        try:
+            pos = self.text.index("_at_cursor")
+        except tk.TclError:
+            return None
+        # Skip blank lines at cursor
+        while self.text.compare(pos, "<", "end-1c"):
+            line = self.text.get(f"{pos} linestart", f"{pos} lineend")
+            if line.strip():
+                break
+            pos = self.text.index(f"{pos} + 1 line")
+        if self.text.compare(pos, ">=", "end-1c"):
+            return None
+        start = self.text.index(f"{pos} linestart")
+        current = start
+        accumulated = 0
+        last_blank: str | None = None
+        last_scene: str | None = None
+        while self.text.compare(current, "<", "end-1c"):
+            line_end = self.text.index(f"{current} lineend")
+            line = self.text.get(current, line_end)
+            accumulated += len(line) + 1
+            next_line = self.text.index(f"{current} + 1 line")
+            stripped = line.strip()
+            # Track natural break points
+            if not stripped:
+                last_blank = next_line
+            elif (self._AT_SLUG_RE.match(stripped) or self._AT_TRANS_RE.match(stripped)) \
+                    and accumulated > 120:
+                last_scene = current   # break BEFORE this heading/transition
+            if accumulated >= self._AT_MAX_CHARS:
+                end = last_scene or last_blank or line_end
+                break
+            if self.text.compare(next_line, ">=", "end-1c"):
+                end = self.text.index("end-1c")
+                break
+            current = next_line
+        else:
+            end = self.text.index("end-1c")
+        block_text = self.text.get(start, end)
+        if not block_text.strip():
+            return None
+        return block_text, start, end
+
+    def _auto_transcript_thread(self, model: str, prompt: str) -> None:
+        import os
+        try:
+            env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
+            proc = subprocess.Popen(
+                ["ollama", "run", model],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
+            self._writer_ai_process = proc
+            out, _err = proc.communicate(input=prompt.encode("utf-8"))
+            output = out.decode("utf-8", errors="replace")
+            self.root.after(0, self._auto_transcript_finish, output, proc.returncode)
+        except Exception:
+            self.root.after(0, self._auto_transcript_finish, "", 1)
+
+    def _auto_transcript_finish(self, output: str, returncode: int) -> None:
+        self._close_progress_overlay()
+        self.writer_ai_generating = False
+        self._writer_ai_process = None
+        if self._writer_ai_cancelled or not self._auto_transcript_running:
+            self._auto_transcript_running = False
+            if self._auto_transcript_btn:
+                self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
+            self.writer_ai_status_var.set("Auto transcript stopped.")
+            return
+        if returncode != 0 or not output.strip():
+            self._auto_transcript_running = False
+            if self._auto_transcript_btn:
+                self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
+            self.writer_ai_status_var.set("Auto transcript: model error — stopped.")
+            return
+        cleaned = self._sanitize_local_ai_output(output).strip()
+        if not cleaned:
+            self._auto_transcript_running = False
+            if self._auto_transcript_btn:
+                self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
+            self.writer_ai_status_var.set("Auto transcript: empty output — stopped.")
+            return
+        # Auto-replace the source block with the formatted output
+        bs = self._auto_transcript_block_start
+        be = self._auto_transcript_block_end
+        try:
+            self.text.delete(bs, be)
+            self.text.insert(bs, cleaned + "\n\n")
+            ins_end = self.text.index(f"{bs} + {len(cleaned) + 2}c")
+            self._auto_tag_screenplay_block(self.text, bs, ins_end)
+            # Advance the floating mark to just after inserted text
+            self.text.mark_set("_at_cursor", ins_end)
+            self.text.mark_gravity("_at_cursor", "right")
+            self.text.see(ins_end)
+        except tk.TclError as exc:
+            self._auto_transcript_running = False
+            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
+            if self._auto_transcript_btn:
+                self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
+            self.writer_ai_status_var.set(f"Auto transcript error: {exc}")
+            return
+        # Small pause then process next block
+        self.root.after(300, self._auto_transcript_step)
 
     def _show_writer_ai_progress_overlay(self, detail: str, model: str) -> None:
         self._progress_win = tk.Toplevel(self.root)
