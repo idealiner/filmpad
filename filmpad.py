@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import threading
 import time
+import traceback
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
@@ -199,11 +201,15 @@ class FilmPad:
         self._writer_ai_sel_start: str | None = None
         self._writer_ai_sel_end: str | None = None
         self._auto_transcript_running = False
+        self._auto_transcript_cancelled = False
+        self._auto_transcript_process: subprocess.Popen | None = None
+        self._auto_transcript_safe_mode_var = tk.BooleanVar(value=True)
         self._auto_transcript_btn: ttk.Button | None = None
-        self._auto_transcript_block_start: str | None = None
-        self._auto_transcript_block_end: str | None = None
+        self._auto_transcript_block_num: int = 0
         self._at_start_line: int = 0
         self._at_log_var = tk.StringVar(value="")
+        self._auto_transcript_block_start: str | None = None
+        self._auto_transcript_block_end: str | None = None
 
         self._build_writer_ai_panel()
         self.scroll.pack(side="right", fill="y")
@@ -238,6 +244,8 @@ class FilmPad:
 
         self._set_window_icon()
         self._build_menu()
+        # Show setup helper shortly after launch so startup stays responsive.
+        self.root.after(800, self._prompt_local_ai_dependency_setup)
 
     def _available_screenplay_fonts(self) -> list[str]:
         font_families = set(tkfont.families(self.root))
@@ -465,7 +473,6 @@ class FilmPad:
         w = canvas.winfo_width()
         if w < 4:
             return
-        # Separator line on the right edge
         canvas.create_line(w - 1, 0, w - 1, canvas.winfo_height(),
                            fill=c["gutter_fg"], width=1)
         try:
@@ -752,6 +759,249 @@ class FilmPad:
         self.root.bind("<Control-s>", lambda _e: self.save_file())
         self.root.bind("<F7>", lambda _e: self._check_spelling())
 
+    def _get_installed_ollama_models(self) -> set[str]:
+        if not shutil.which("ollama"):
+            return set()
+        try:
+            result = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return set()
+        if result.returncode != 0:
+            return set()
+        models: set[str] = set()
+        for line in result.stdout.splitlines()[1:]:
+            parts = line.split()
+            if parts:
+                models.add(parts[0].strip())
+        return models
+
+    def _prompt_local_ai_dependency_setup(self) -> None:
+        has_ollama = shutil.which("ollama") is not None
+        installed_models = self._get_installed_ollama_models() if has_ollama else set()
+        missing_models = [m for m in LOCAL_AI_MODELS if m not in installed_models]
+        has_spd_say = shutil.which("spd-say") is not None
+        has_spell_tool = any(shutil.which(tool) for tool in ("aspell", "hunspell"))
+
+        if has_ollama and not missing_models and has_spd_say and has_spell_tool:
+            return
+
+        if not has_ollama:
+            self.local_ai_status_var.set("Local AI setup needed: Ollama is not installed.")
+        elif missing_models:
+            self.local_ai_status_var.set(
+                "Local AI setup needed: missing models " + ", ".join(missing_models)
+            )
+        elif not has_spd_say:
+            self.local_ai_status_var.set("Setup suggestion: install spd-say for read aloud.")
+        elif not has_spell_tool:
+            self.local_ai_status_var.set("Setup suggestion: install aspell or hunspell for spellcheck.")
+
+        summary_lines = []
+        if not has_ollama:
+            summary_lines.append("- Ollama is missing")
+        if missing_models:
+            summary_lines.append("- Missing models: " + ", ".join(missing_models))
+        if not has_spd_say:
+            summary_lines.append("- Read-aloud tool missing: spd-say")
+        if not has_spell_tool:
+            summary_lines.append("- Spellcheck tool missing: aspell/hunspell")
+        summary = "\n".join(summary_lines)
+
+        if not messagebox.askyesno(
+            "FilmPad first-time setup",
+            "FilmPad detected missing optional/required dependencies:\n\n"
+            f"{summary}\n\n"
+            "Open guided setup now?",
+        ):
+            return
+
+        self._show_local_ai_setup_dialog(
+            ollama_missing=not has_ollama,
+            missing_models=missing_models,
+            spd_say_missing=not has_spd_say,
+            spell_tool_missing=not has_spell_tool,
+        )
+
+    def _show_local_ai_setup_dialog(
+        self,
+        ollama_missing: bool,
+        missing_models: list[str],
+        spd_say_missing: bool,
+        spell_tool_missing: bool,
+    ) -> None:
+        win = tk.Toplevel(self.root)
+        win.title("FilmPad setup")
+        win.transient(self.root)
+        win.resizable(False, False)
+        win.grab_set()
+
+        frame = ttk.Frame(win, padding=14)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame,
+            text="Install missing FilmPad dependencies",
+            font=("TkDefaultFont", 10, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(
+            frame,
+            text="Select what to install. A terminal will open and run the selected commands.",
+            wraplength=430,
+        ).pack(anchor="w", pady=(4, 10))
+
+        install_ollama_var = tk.BooleanVar(value=ollama_missing)
+        install_spd_say_var = tk.BooleanVar(value=spd_say_missing)
+        install_spell_var = tk.BooleanVar(value=spell_tool_missing)
+        model_vars: dict[str, tk.BooleanVar] = {
+            model: tk.BooleanVar(value=True) for model in missing_models
+        }
+
+        if ollama_missing:
+            ttk.Checkbutton(
+                frame,
+                text="Install Ollama",
+                variable=install_ollama_var,
+            ).pack(anchor="w", pady=(0, 8))
+
+        if missing_models:
+            ttk.Label(frame, text="Install models:").pack(anchor="w")
+            for model in missing_models:
+                ttk.Checkbutton(
+                    frame,
+                    text=model,
+                    variable=model_vars[model],
+                ).pack(anchor="w")
+
+        if spd_say_missing or spell_tool_missing:
+            ttk.Label(frame, text="Install system tools:").pack(anchor="w", pady=(8, 0))
+            if spd_say_missing:
+                ttk.Checkbutton(
+                    frame,
+                    text="speech-dispatcher (provides spd-say for Read Aloud)",
+                    variable=install_spd_say_var,
+                ).pack(anchor="w")
+            if spell_tool_missing:
+                ttk.Checkbutton(
+                    frame,
+                    text="aspell (spellcheck)",
+                    variable=install_spell_var,
+                ).pack(anchor="w")
+
+        status_var = tk.StringVar(value="")
+        ttk.Label(frame, textvariable=status_var, wraplength=430).pack(anchor="w", pady=(10, 0))
+
+        btn_row = ttk.Frame(frame)
+        btn_row.pack(fill="x", pady=(12, 0))
+
+        def _run_setup() -> None:
+            selected_models = [
+                model for model, var in model_vars.items() if var.get()
+            ]
+            install_ollama = bool(ollama_missing and install_ollama_var.get())
+            install_spd_say = bool(spd_say_missing and install_spd_say_var.get())
+            install_spell = bool(spell_tool_missing and install_spell_var.get())
+            if not install_ollama and not selected_models and not install_spd_say and not install_spell:
+                status_var.set("Nothing selected.")
+                return
+
+            cmd_lines = ["set -e"]
+            package_names: list[str] = []
+            if install_spd_say:
+                package_names.append("speech-dispatcher")
+            if install_spell:
+                package_names.append("aspell")
+            if package_names:
+                cmd_lines.extend(self._build_package_install_script(package_names))
+            if install_ollama:
+                cmd_lines.extend(
+                    [
+                        "echo 'Installing Ollama...'",
+                        "curl -fsSL https://ollama.com/install.sh | sh",
+                    ]
+                )
+            if selected_models:
+                cmd_lines.extend(
+                    [
+                        "if ! command -v ollama >/dev/null 2>&1; then",
+                        "  echo 'Ollama was not found on PATH after setup.'",
+                        "  exit 1",
+                        "fi",
+                        "if ! ollama list >/dev/null 2>&1; then",
+                        "  if command -v systemctl >/dev/null 2>&1; then",
+                        "    sudo systemctl start ollama || true",
+                        "  fi",
+                        "fi",
+                        "if ! ollama list >/dev/null 2>&1; then",
+                        "  nohup ollama serve >/tmp/ollama-serve.log 2>&1 &",
+                        "  sleep 2",
+                        "fi",
+                    ]
+                )
+                for model in selected_models:
+                    cmd_lines.append(f"ollama pull {shlex.quote(model)}")
+            cmd_lines.append("echo")
+            cmd_lines.append("echo 'Setup complete. You can close this terminal.'")
+            command_script = "\n".join(cmd_lines)
+
+            launched = self._open_setup_terminal(command_script)
+            if launched:
+                status_var.set("Setup launched in terminal.")
+                win.destroy()
+            else:
+                status_var.set("No terminal emulator found. Run setup commands manually.")
+                messagebox.showinfo(
+                    "Manual setup",
+                    "No terminal emulator was detected. Run these commands manually:\n\n"
+                    + command_script,
+                )
+
+        ttk.Button(btn_row, text="Run Setup", command=_run_setup).pack(side="left")
+        ttk.Button(btn_row, text="Skip", command=win.destroy).pack(side="left", padx=(8, 0))
+
+    def _build_package_install_script(self, packages: list[str]) -> list[str]:
+        quoted = " ".join(shlex.quote(pkg) for pkg in packages)
+        return [
+            "echo 'Installing system packages...'",
+            "if command -v apt-get >/dev/null 2>&1; then",
+            "  sudo apt-get update",
+            f"  sudo apt-get install -y {quoted}",
+            "elif command -v dnf >/dev/null 2>&1; then",
+            f"  sudo dnf install -y {quoted}",
+            "elif command -v pacman >/dev/null 2>&1; then",
+            f"  sudo pacman -Sy --noconfirm {quoted}",
+            "elif command -v zypper >/dev/null 2>&1; then",
+            f"  sudo zypper install -y {quoted}",
+            "else",
+            "  echo 'Unsupported package manager. Install manually:'",
+            f"  echo '  {quoted}'",
+            "  exit 1",
+            "fi",
+        ]
+
+    def _open_setup_terminal(self, script: str) -> bool:
+        shell_cmd = f"{script}\nexec bash"
+        candidates = [
+            ["x-terminal-emulator", "-e", "bash", "-lc", shell_cmd],
+            ["gnome-terminal", "--", "bash", "-lc", shell_cmd],
+            ["konsole", "-e", "bash", "-lc", shell_cmd],
+            ["xfce4-terminal", "--hold", "-e", f"bash -lc {shlex.quote(shell_cmd)}"],
+            ["xterm", "-hold", "-e", "bash", "-lc", shell_cmd],
+        ]
+        for cmd in candidates:
+            if shutil.which(cmd[0]) is None:
+                continue
+            try:
+                subprocess.Popen(cmd)
+                return True
+            except OSError:
+                continue
+        return False
+
     # ------------------------------------------------------------------
     # Writer AI panel
     # ------------------------------------------------------------------
@@ -849,6 +1099,11 @@ class FilmPad:
             font=("TkDefaultFont", 8),
             foreground="#888888",
         ).pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(
+            self._writer_ai_content,
+            text="Safe mode (smaller steps, slower, more stable)",
+            variable=self._auto_transcript_safe_mode_var,
+        ).pack(anchor="w", pady=(4, 0))
 
         ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 6))
         ttk.Label(
@@ -923,55 +1178,6 @@ class FilmPad:
         )
         return "".join(parts)
 
-    @staticmethod
-    def _find_ollama() -> str | None:
-        """Locate the ollama executable, checking common install paths."""
-        found = shutil.which("ollama")
-        if found:
-            return found
-        for candidate in [
-            "/usr/local/bin/ollama",
-            "/opt/homebrew/bin/ollama",
-            str(Path.home() / ".local" / "bin" / "ollama"),
-            "/usr/bin/ollama",
-        ]:
-            if Path(candidate).is_file():
-                return candidate
-        return None
-
-    def _check_ollama_ready(self, model: str) -> str | None:
-        """Return a human-readable error string if Ollama isn't usable, else None."""
-        ollama = self._find_ollama()
-        if not ollama:
-            return (
-                "Ollama is not installed or not found on PATH.\n\n"
-                "Install from https://ollama.com/download\n"
-                f"Then run:  ollama pull {model}"
-            )
-        try:
-            r = subprocess.run(
-                [ollama, "list"], capture_output=True, text=True, timeout=8
-            )
-        except subprocess.TimeoutExpired:
-            return (
-                "Ollama is not responding (timed out).\n\n"
-                "Start the server:  ollama serve"
-            )
-        except Exception as exc:
-            return f"Ollama check failed: {exc}"
-        if r.returncode != 0:
-            return (
-                "Ollama server is not running.\n\n"
-                "Start it:  ollama serve\n\n"
-                + (r.stderr.strip()[:200] if r.stderr.strip() else "")
-            )
-        if model and model not in r.stdout:
-            return (
-                f"Model \u2018{model}\u2019 is not downloaded.\n\n"
-                f"Run:  ollama pull {model}"
-            )
-        return None
-
     def _run_writer_ai_edit(self) -> None:
         if self.writer_ai_generating:
             return
@@ -992,10 +1198,6 @@ class FilmPad:
             )
             return
         model = self.writer_ai_model_var.get()
-        err = self._check_ollama_ready(model)
-        if err:
-            messagebox.showerror("Setup required", err)
-            return
         project_context = self._read_project_knowledge()
         full_prompt = self._build_writer_ai_prompt(selected_text, user_prompt, project_context)
         self.writer_ai_generating = True
@@ -1011,28 +1213,19 @@ class FilmPad:
 
     def _run_writer_ai_thread(self, model: str, prompt: str) -> None:
         import os
-        ollama = self._find_ollama() or "ollama"
         try:
             env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
             proc = subprocess.Popen(
-                [ollama, "run", model],
+                ["ollama", "run", model],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
             )
             self._writer_ai_process = proc
-            try:
-                out, _err = proc.communicate(input=prompt.encode("utf-8"), timeout=300)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.communicate()
-                self.root.after(0, self._finish_writer_ai_edit, "", -2)
-                return
+            out, _err = proc.communicate(input=prompt.encode("utf-8"))
             output = out.decode("utf-8", errors="replace")
             self.root.after(0, self._finish_writer_ai_edit, output, proc.returncode)
-        except FileNotFoundError:
-            self.root.after(0, self._finish_writer_ai_edit, "", 127)
         except Exception:
             self.root.after(0, self._finish_writer_ai_edit, "", 1)
 
@@ -1044,17 +1237,7 @@ class FilmPad:
             self.writer_ai_status_var.set("Cancelled.")
             return
         if returncode != 0 or not output.strip():
-            if returncode == 127:
-                msg = "Ollama not found.\n\nInstall from https://ollama.com/download"
-            elif returncode == -2:
-                msg = ("Request timed out (5 min).\n\n"
-                       "Try a smaller/faster model, e.g. phi3 or mistral:7b.")
-            else:
-                msg = ("No output from model.\n\n"
-                       "Check that Ollama is running (ollama serve) "
-                       "and the selected model is downloaded.")
-            self.writer_ai_status_var.set(msg.split("\n")[0])
-            messagebox.showerror("Writer AI", msg)
+            self.writer_ai_status_var.set("Error or no output from model.")
             return
         cleaned = self._sanitize_local_ai_output(output).strip()
         # Capture the original text for side-by-side review before any replacement
@@ -1213,15 +1396,78 @@ class FilmPad:
         re.IGNORECASE,
     )
     _AT_MAX_CHARS = 2200  # max chars per block (leaves headroom for prompt)
+    _AT_SAFE_MAX_CHARS = 1200
+    _AT_NEXT_STEP_DELAY_MS = 300
+    _AT_SAFE_NEXT_STEP_DELAY_MS = 1200
+
+    def _auto_transcript_environment_risks(self) -> list[str]:
+        risks: list[str] = []
+        try:
+            root_source = subprocess.run(
+                ["findmnt", "-n", "-o", "SOURCE", "/"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            ).stdout.strip()
+            if root_source.startswith("/dev/sd"):
+                risks.append("Root filesystem is on /dev/sd* (often external/USB on this hardware).")
+                try:
+                    tran = subprocess.run(
+                        ["lsblk", "-ndo", "TRAN", root_source],
+                        capture_output=True,
+                        text=True,
+                        timeout=2,
+                    ).stdout.strip().lower()
+                    if "usb" in tran:
+                        risks.append("Root filesystem transport appears to be USB.")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            mounts = subprocess.run(
+                ["findmnt", "-rn", "-o", "TARGET,SOURCE"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            ).stdout.splitlines()
+            media_mounts = [line for line in mounts if line.startswith("/media/")]
+            if media_mounts:
+                risks.append("Removable/media mounts are active under /media.")
+        except Exception:
+            pass
+        return risks
+
+    def _confirm_auto_transcript_environment(self) -> bool:
+        risks = self._auto_transcript_environment_risks()
+        if not risks:
+            return True
+        msg = (
+            "Auto Transcript can stress GPU/storage while Ollama is running.\n\n"
+            "Detected risk factors:\n- " + "\n- ".join(risks) + "\n\n"
+            "Recommended:\n"
+            "- Keep Safe mode enabled\n"
+            "- Close heavy apps\n"
+            "- Prefer running Linux from an internal drive\n\n"
+            "Start Auto Transcript anyway?"
+        )
+        return messagebox.askyesno("Auto Transcript safety warning", msg)
 
     def _toggle_auto_transcript(self) -> None:
         if self._auto_transcript_running:
             self._auto_transcript_running = False
-            if self._writer_ai_process:
+            self._auto_transcript_cancelled = True
+            if self._auto_transcript_process:
                 try:
-                    self._writer_ai_process.kill()
+                    self._auto_transcript_process.kill()
                 except OSError:
                     pass
+            self._auto_transcript_process = None
+            self.writer_ai_generating = False
+            self._close_progress_overlay()
+            self._auto_transcript_block_start = None
+            self._auto_transcript_block_end = None
             self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
             if self._auto_transcript_btn:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
@@ -1233,14 +1479,11 @@ class FilmPad:
         if self.writer_ai_generating:
             self.writer_ai_status_var.set("Wait for current generation to finish.")
             return
-        model = self.writer_ai_model_var.get().strip()
-        if not model:
-            messagebox.showerror("Auto Transcript", "Select a model first.")
+        if not self._confirm_auto_transcript_environment():
+            self.writer_ai_status_var.set("Auto transcript cancelled by safety warning.")
             return
-        err = self._check_ollama_ready(model)
-        if err:
-            messagebox.showerror("Setup required", err)
-            return
+        self._auto_transcript_cancelled = False
+        self._auto_transcript_process = None
         try:
             start_pos = self.text.index(tk.INSERT)
         except tk.TclError:
@@ -1277,17 +1520,14 @@ class FilmPad:
         self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
         self.text.tag_add(AUTO_TRANSCRIPT_TAG, block_start, block_end)
         self.text.see(block_start)
-        self._auto_transcript_block_num += 1
         n = block_text.count("\n") + 1
-        chars = len(block_text)
+        self._auto_transcript_block_num += 1
         cur_line = int(block_start.split(".")[0])
         self._at_log_var.set(
             f"Started: L{self._at_start_line} | Block: {self._auto_transcript_block_num}"
             f" | Pos: L{cur_line} | Saved: {self._at_last_saved_label()}"
         )
-        self.writer_ai_status_var.set(
-            f"Auto transcript block {self._auto_transcript_block_num}: {n} lines, {chars} chars\u2026"
-        )
+        self.writer_ai_status_var.set(f"Auto transcript: processing {n} lines\u2026")
         # Reuse the transcribe prompt text
         prompt = (
             "Reformat the following text as a properly laid-out screenplay.\n\n"
@@ -1315,12 +1555,7 @@ class FilmPad:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
             return
         self.writer_ai_generating = True
-        self._writer_ai_cancelled = False
-        self._writer_ai_process = None
-        self._show_writer_ai_progress_overlay(
-            f"Auto transcript \u2014 block {self._auto_transcript_block_num} ({n} lines, {chars} chars)",
-            model
-        )
+        self._show_writer_ai_progress_overlay(f"Auto transcript ({n} lines)", model)
         threading.Thread(
             target=self._auto_transcript_thread,
             args=(model, full_prompt),
@@ -1358,7 +1593,8 @@ class FilmPad:
             elif (self._AT_SLUG_RE.match(stripped) or self._AT_TRANS_RE.match(stripped)) \
                     and accumulated > 120:
                 last_scene = current   # break BEFORE this heading/transition
-            if accumulated >= self._AT_MAX_CHARS:
+            max_chars = self._AT_SAFE_MAX_CHARS if self._auto_transcript_safe_mode_var.get() else self._AT_MAX_CHARS
+            if accumulated >= max_chars:
                 end = last_scene or last_blank or line_end
                 break
             if self.text.compare(next_line, ">=", "end-1c"):
@@ -1374,84 +1610,44 @@ class FilmPad:
 
     def _auto_transcript_thread(self, model: str, prompt: str) -> None:
         import os
-        ollama = self._find_ollama() or "ollama"
         try:
             env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
             proc = subprocess.Popen(
-                [ollama, "run", model],
+                ["ollama", "run", model],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
             )
-            self._writer_ai_process = proc
-            try:
-                out, err_bytes = proc.communicate(input=prompt.encode("utf-8"), timeout=180)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.communicate()
-                self.root.after(
-                    0, self._auto_transcript_finish, "", -2,
-                    "Block timed out after 3 minutes.\n\n"
-                    "The model is too slow for this hardware.\n"
-                    "Try a smaller model such as phi3 or tinyllama.",
-                )
-                return
+            self._auto_transcript_process = proc
+            out, _err = proc.communicate(input=prompt.encode("utf-8"))
             output = out.decode("utf-8", errors="replace")
-            stderr_text = err_bytes.decode("utf-8", errors="replace").strip()
-            detail = stderr_text[:400] if (proc.returncode != 0 and stderr_text) else ""
-            self.root.after(0, self._auto_transcript_finish, output, proc.returncode, detail)
-        except FileNotFoundError:
-            self.root.after(
-                0, self._auto_transcript_finish, "", 127,
-                "Ollama not found.\n\nInstall from https://ollama.com/download\n"
-                f"Then run:  ollama pull {model}",
-            )
-        except Exception as exc:
-            self.root.after(0, self._auto_transcript_finish, "", 1, str(exc))
+            self.root.after(0, self._auto_transcript_finish, output, proc.returncode)
+        except Exception:
+            self.root.after(0, self._auto_transcript_finish, "", 1)
 
-    def _auto_transcript_finish(self, output: str, returncode: int, error_detail: str = "") -> None:
+    def _auto_transcript_finish(self, output: str, returncode: int) -> None:
         self._close_progress_overlay()
         self.writer_ai_generating = False
-        self._writer_ai_process = None
-        if self._writer_ai_cancelled or not self._auto_transcript_running:
+        self._auto_transcript_process = None
+        if self._auto_transcript_cancelled or not self._auto_transcript_running:
             self._auto_transcript_running = False
-            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
             if self._auto_transcript_btn:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
             self.writer_ai_status_var.set("Auto transcript stopped.")
             return
         if returncode != 0 or not output.strip():
             self._auto_transcript_running = False
-            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
             if self._auto_transcript_btn:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
-            if returncode == 127:
-                msg = "Ollama not found.\n\nInstall from https://ollama.com/download"
-            elif returncode == -2:
-                msg = error_detail or (
-                    "Block timed out after 3 minutes.\n\n"
-                    "Try a smaller model such as phi3 or tinyllama."
-                )
-            else:
-                msg = "No output from model."
-                if error_detail:
-                    msg += f"\n\nOllama output:\n{error_detail}"
-                else:
-                    msg += ("\n\nCheck that:\n"
-                            "\u2022 Ollama is running (ollama serve)\n"
-                            "\u2022 The selected model is downloaded (ollama pull <model>)")
-            self.writer_ai_status_var.set(f"Auto transcript stopped (block {self._auto_transcript_block_num}).")
-            messagebox.showerror("Auto Transcript stopped", msg)
+            self.writer_ai_status_var.set("Auto transcript: model error — stopped.")
             return
         cleaned = self._sanitize_local_ai_output(output).strip()
         if not cleaned:
             self._auto_transcript_running = False
-            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
             if self._auto_transcript_btn:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
             self.writer_ai_status_var.set("Auto transcript: empty output — stopped.")
-            messagebox.showwarning("Auto Transcript", "Model returned empty output. Stopping.\n\nTry a different model.")
             return
         # Auto-replace the source block with the formatted output
         bs = self._auto_transcript_block_start
@@ -1474,7 +1670,8 @@ class FilmPad:
             self.writer_ai_status_var.set(f"Auto transcript error: {exc}")
             return
         # Small pause then process next block
-        self.root.after(300, self._auto_transcript_step)
+        delay = self._AT_SAFE_NEXT_STEP_DELAY_MS if self._auto_transcript_safe_mode_var.get() else self._AT_NEXT_STEP_DELAY_MS
+        self.root.after(delay, self._auto_transcript_step)
 
     def _at_last_saved_label(self) -> str:
         return getattr(self, "_at_last_saved_str", "\u2014")
@@ -1493,7 +1690,7 @@ class FilmPad:
                 self._set_title()
                 self._at_last_saved_str = f"L{cur_line}"
             except OSError as exc:
-                self._at_last_saved_str = f"error: {exc}"
+                self._at_last_saved_str = f"err: {exc}"
         else:
             self._at_last_saved_str = "unsaved"
         self._at_log_var.set(
@@ -1539,6 +1736,25 @@ class FilmPad:
         ttk.Button(outer, text="Cancel", command=self._cancel_writer_ai_edit).pack(pady=(12, 0))
 
     def _cancel_writer_ai_edit(self) -> None:
+        if self._auto_transcript_running:
+            self._auto_transcript_running = False
+            self._auto_transcript_cancelled = True
+            proc = self._auto_transcript_process
+            if proc is not None:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+            self._auto_transcript_process = None
+            self._auto_transcript_block_start = None
+            self._auto_transcript_block_end = None
+            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
+            if self._auto_transcript_btn:
+                self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
+            self._close_progress_overlay()
+            self.writer_ai_generating = False
+            self.writer_ai_status_var.set("Auto transcript cancelled.")
+            return
         self._writer_ai_cancelled = True
         proc = self._writer_ai_process
         if proc is not None:
@@ -2601,19 +2817,36 @@ def _install_icons_early(exec_cmd: str) -> None:
 
 def main() -> None:
     import os
-    appimage_path = os.environ.get("APPIMAGE")
-    exec_cmd = appimage_path if appimage_path else f"python3 {Path(sys.argv[0]).resolve()}"
-    # Install icons and .desktop BEFORE the window appears so Plank sees them immediately
-    _install_icons_early(exec_cmd)
-    root = tk.Tk(className="Filmpad")  # WM_CLASS class = Filmpad, matches StartupWMClass in .desktop
-    app = FilmPad(root)
-    app._set_title()
-    # Start in dark mode by default
-    app._dark_mode = True
-    app._apply_theme()
-    app._theme_btn.configure(text="\u2600 Light")
-    root.protocol("WM_DELETE_WINDOW", app.on_exit)
-    root.mainloop()
+    try:
+        appimage_path = os.environ.get("APPIMAGE")
+        exec_cmd = appimage_path if appimage_path else f"python3 {Path(sys.argv[0]).resolve()}"
+        # Install icons and .desktop BEFORE the window appears so Plank sees them immediately
+        _install_icons_early(exec_cmd)
+        root = tk.Tk(className="Filmpad")  # WM_CLASS class = Filmpad, matches StartupWMClass in .desktop
+        app = FilmPad(root)
+        app._set_title()
+        # Start in dark mode by default
+        app._dark_mode = True
+        app._apply_theme()
+        app._theme_btn.configure(text="\u2600 Light")
+        root.protocol("WM_DELETE_WINDOW", app.on_exit)
+        root.mainloop()
+    except Exception:
+        cache_dir = Path.home() / ".cache" / "filmpad"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        log_path = cache_dir / "launch-error.log"
+        log_path.write_text(traceback.format_exc(), encoding="utf-8")
+        try:
+            fallback = tk.Tk()
+            fallback.withdraw()
+            messagebox.showerror(
+                "FilmPad launch failed",
+                "FilmPad could not start.\n\n"
+                f"Error details were saved to:\n{log_path}",
+            )
+            fallback.destroy()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

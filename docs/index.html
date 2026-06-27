@@ -178,6 +178,38 @@
 
     .deps td:first-child { color: var(--text); font-weight: 600; }
 
+    .quickstart {
+      margin-top: 24px;
+      padding: 18px;
+      border: 1px solid rgba(125, 211, 252, 0.28);
+      border-radius: 14px;
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .quickstart h3 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+      color: var(--text);
+      letter-spacing: 0.01em;
+    }
+
+    .quickstart ol {
+      margin: 0;
+      padding-left: 1.3em;
+      color: var(--text);
+      line-height: 1.75;
+    }
+
+    .quickstart li {
+      margin-bottom: 8px;
+    }
+
+    .quickstart p {
+      margin: 10px 0 0;
+      font-size: 0.96rem;
+      color: var(--muted);
+    }
+
     .footnote {
       margin-top: 22px;
       color: var(--muted);
@@ -226,23 +258,45 @@
 
     <div class="actions">
       <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.5/FilmPad-v0.5-x86_64.AppImage">&#8659; Download AppImage</a>
+      <a class="button secondary" href="https://raw.githubusercontent.com/idealiner/filmpad/main/doctor.sh">Download doctor.sh</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad">GitHub Repository</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad/releases">All Releases</a>
     </div>
+
+    <section class="quickstart" aria-label="Get started quickly">
+      <h3>Start in 60 seconds</h3>
+      <ol>
+        <li>Download the AppImage and double-click it.</li>
+        <li>If it does not open, run <code>doctor.sh</code> to see exactly what is missing.</li>
+        <li>Copy and run the install commands shown by <code>doctor.sh</code>.</li>
+        <li>Launch again. Writer mode works even if AI dependencies are skipped.</li>
+      </ol>
+      <p>No README digging required. The two buttons above are enough for first-time setup.</p>
+    </section>
 
     <p class="footnote">
       <code>chmod +x FilmPad-v0.5-x86_64.AppImage &amp;&amp; ./FilmPad-v0.5-x86_64.AppImage</code>
     </p>
 
+    <p class="footnote">
+      <code>chmod +x doctor.sh &amp;&amp; ./doctor.sh</code>
+    </p>
+
     <h2>What&rsquo;s new in v0.5</h2>
     <ul>
-      <li><strong>Line numbers</strong> &mdash; gutter on the left of the writer pad, stays in sync while scrolling</li>
-      <li><strong>Auto Transcript log</strong> &mdash; shows Started / Block / Position / Last Saved line numbers while running</li>
-      <li><strong>Auto-save after each block</strong> &mdash; file is silently saved after every completed block</li>
-      <li><strong>Ollama diagnostics</strong> &mdash; pre-flight check before any AI operation: detects missing Ollama, server not running, model not downloaded; shows actionable error dialogs</li>
-      <li><strong>Timeout handling</strong> &mdash; 3-minute block timeout for Auto Transcript, 5-minute timeout for Writer AI; clear message with model suggestion on timeout</li>
-      <li><strong>Mac path discovery</strong> &mdash; finds Ollama at <code>/opt/homebrew/bin/ollama</code> and <code>/usr/local/bin/ollama</code> when not on PATH</li>
-      <li><strong>doctor.sh</strong> &mdash; system readiness check script; diagnoses Python, Tkinter, Ollama, models, FUSE</li>
+      <li><strong>Line numbers</strong> &mdash; gutter on the left of the writer pad, stays in sync while scrolling via <code>dlineinfo</code></li>
+      <li><strong>Auto Transcript log</strong> &mdash; label shows Started / Block / Position / Last Saved line numbers in real time</li>
+      <li><strong>Auto-save after each block</strong> &mdash; file is silently saved after every completed Auto Transcript block</li>
+      <li><strong>doctor.sh</strong> &mdash; comprehensive system check: Python, Tkinter, Ollama, models, FUSE; terminal stays open after running</li>
+    </ul>
+
+    <h2>What&rsquo;s new in v0.4</h2>
+    <ul>
+      <li><strong>Launch fallback chain</strong> &mdash; launcher now tries AppImage, then dist binary, then source run for maximum reliability</li>
+      <li><strong>Desktop-visible launch errors</strong> &mdash; failed starts show GUI error dialogs with recovery instructions</li>
+      <li><strong>Dependency-first startup checks</strong> &mdash; Python is checked first with distro-specific install hints</li>
+      <li><strong>Guided first-time setup</strong> &mdash; optional installer flow for Ollama, missing models, read-aloud tool, and spellcheck tool</li>
+      <li><strong>Safe missing-Python test mode</strong> &mdash; use <code>FILMPAD_TEST_NO_PYTHON=1</code> to test dependency UX without uninstalling Python</li>
     </ul>
 
     <h2>Features</h2>
@@ -276,6 +330,14 @@
         </tr>
       </table>
     </div>
+
+    <h2>Release Maintainer Checklist</h2>
+    <ul>
+      <li>Build: <code>APPIMAGE_EXTRACT_AND_RUN=1 ./build-appimage.sh</code></li>
+      <li>Checksum: <code>sha256sum FilmPad-v0.4-x86_64.AppImage &gt; FilmPad-v0.4-x86_64.AppImage.sha256</code></li>
+      <li>Upload both files to the GitHub release tag <code>v0.4</code></li>
+      <li>Verify direct download link returns HTTP 200 before announcing the release</li>
+    </ul>
 
     <p class="footnote">
       Source: <a href="https://github.com/idealiner/filmpad" style="color:var(--accent)">github.com/idealiner/filmpad</a> &mdash; MIT licence

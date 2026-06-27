@@ -9,6 +9,7 @@ FilmPad is a screenplay editor and local AI adaptation tool built with Python an
 | Platform | Download |
 |----------|---------|
 | **Linux x86_64** | [FilmPad-v0.5-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.5/FilmPad-v0.5-x86_64.AppImage) |
+| **Diagnostics** | [doctor.sh](https://github.com/idealiner/filmpad/releases/download/v0.5/doctor.sh) |
 
 Windows and macOS builds are not yet available. The app can be run from source on any platform — see [Running from source](#running-from-source) below.
 
@@ -21,6 +22,8 @@ chmod +x FilmPad-v0.5-x86_64.AppImage
 
 The AppImage bundles Python and Tkinter. Only [Ollama](https://ollama.com) needs to be installed separately.
 
+If the app does not launch on first try, download and run `doctor.sh` from the table above.
+
 ---
 
 ## Releases
@@ -28,13 +31,19 @@ The AppImage bundles Python and Tkinter. Only [Ollama](https://ollama.com) needs
 ### v0.5 — Line Numbers, Auto Transcript Log & Auto-Save
 *2025-06-27*
 
-- **Line numbers** — gutter on the left of the writer pad, updates on every scroll and keystroke
-- **Auto Transcript log** — label below the Auto Transcript button shows Started / Block / Position / Last Saved line numbers in real time
-- **Auto-save after each block** — file is silently saved after every completed Auto Transcript block; log shows the last saved line
-- **Ollama diagnostics** — pre-flight check before every AI operation: detects Ollama not installed, server not running, model not downloaded; clear error dialogs with fix instructions
-- **Timeouts** — 3-minute block timeout for Auto Transcript, 5-minute timeout for Writer AI; message includes model recommendation on timeout
-- **Mac path discovery** — finds Ollama at `/opt/homebrew/bin/ollama` and `~/.local/bin/ollama` when not on PATH
-- **doctor.sh** — run `bash doctor.sh` to check Python, Tkinter, Ollama, downloaded models, and FUSE; terminal stays open after check
+- **Line numbers** — canvas gutter on the left of the writer pad, synced with scroll in real time via `dlineinfo`
+- **Auto Transcript log** — label below the Auto Transcript button shows Started / Block / Position / Last Saved line numbers
+- **Auto-save after each block** — file is silently saved after every completed block; log updates with the saved line
+- **doctor.sh** — comprehensive `bash doctor.sh` check: Python version, Tkinter, Ollama install, server status, downloaded models, FUSE
+
+### v0.4 — Launch Reliability and First-Time Setup
+*2026-06-26*
+
+- **Launch fallback chain** — launcher now tries AppImage first, then `dist/filmpad`, then `python3 filmpad.py`
+- **Desktop-visible launch errors** — failed starts now show GUI error dialogs (Zenity/KDialog/XMessage fallback)
+- **Dependency-first startup checks** — Python is checked first, with distro-specific install hint commands
+- **Guided first-time setup** — startup questionnaire can install Ollama, missing models, read-aloud tool (`spd-say`), and spellcheck tool (`aspell`)
+- **Safe dependency testing mode** — set `FILMPAD_TEST_NO_PYTHON=1` to simulate a missing Python dependency without uninstalling system Python
 
 ### v0.2 — Dark Theme, Writer AI & Screenplay Formatter
 *2026-06-25*
@@ -121,6 +130,33 @@ cd filmpad
 pip install pyinstaller  # only needed if building AppImage
 python3 filmpad.py
 ```
+
+## GitHub Release Delivery (v0.4)
+
+Build and prepare artifacts:
+
+```bash
+./build-appimage.sh
+sha256sum FilmPad-v0.4-x86_64.AppImage > FilmPad-v0.4-x86_64.AppImage.sha256
+```
+
+Tag and push:
+
+```bash
+git add .
+git commit -m "release: v0.4"
+git tag -a v0.4 -m "FilmPad v0.4"
+git push origin main
+git push origin v0.4
+```
+
+Create GitHub release:
+
+- Tag: `v0.4`
+- Title: `FilmPad v0.4`
+- Attach: `FilmPad-v0.4-x86_64.AppImage`
+- Attach: `FilmPad-v0.4-x86_64.AppImage.sha256`
+- Release notes: copy the `v0.4` section from this README
 
 ## Repository Layout
 
