@@ -4,19 +4,19 @@ FilmPad is a screenplay editor and local AI adaptation tool built with Python an
 
 ## Download
 
-> **Latest release: v0.2** — [All releases](https://github.com/idealiner/filmpad/releases)
+> **Latest release: v0.5** — [All releases](https://github.com/idealiner/filmpad/releases)
 
 | Platform | Download |
-|----------|----------|
-| **Linux x86_64** | [FilmPad-v0.2-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.2/FilmPad-v0.2-x86_64.AppImage) |
+|----------|---------|
+| **Linux x86_64** | [FilmPad-v0.5-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.5/FilmPad-v0.5-x86_64.AppImage) |
 
 Windows and macOS builds are not yet available. The app can be run from source on any platform — see [Running from source](#running-from-source) below.
 
 Quick start (Linux):
 
 ```bash
-chmod +x FilmPad-v0.2-x86_64.AppImage
-./FilmPad-v0.2-x86_64.AppImage
+chmod +x FilmPad-v0.5-x86_64.AppImage
+./FilmPad-v0.5-x86_64.AppImage
 ```
 
 The AppImage bundles Python and Tkinter. Only [Ollama](https://ollama.com) needs to be installed separately.
@@ -24,6 +24,17 @@ The AppImage bundles Python and Tkinter. Only [Ollama](https://ollama.com) needs
 ---
 
 ## Releases
+
+### v0.5 — Line Numbers, Auto Transcript Log & Auto-Save
+*2025-06-27*
+
+- **Line numbers** — gutter on the left of the writer pad, updates on every scroll and keystroke
+- **Auto Transcript log** — label below the Auto Transcript button shows Started / Block / Position / Last Saved line numbers in real time
+- **Auto-save after each block** — file is silently saved after every completed Auto Transcript block; log shows the last saved line
+- **Ollama diagnostics** — pre-flight check before every AI operation: detects Ollama not installed, server not running, model not downloaded; clear error dialogs with fix instructions
+- **Timeouts** — 3-minute block timeout for Auto Transcript, 5-minute timeout for Writer AI; message includes model recommendation on timeout
+- **Mac path discovery** — finds Ollama at `/opt/homebrew/bin/ollama` and `~/.local/bin/ollama` when not on PATH
+- **doctor.sh** — run `bash doctor.sh` to check Python, Tkinter, Ollama, downloaded models, and FUSE; terminal stays open after check
 
 ### v0.2 — Dark Theme, Writer AI & Screenplay Formatter
 *2026-06-25*

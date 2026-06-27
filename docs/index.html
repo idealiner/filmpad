@@ -203,7 +203,7 @@
 <body>
   <main class="card">
     <div class="eyebrow">FilmPad &mdash; Linux release</div>
-    <h1>Download v0.2</h1>
+    <h1>Download v0.5</h1>
     <p>
       FilmPad is a screenplay editor with a built-in Local AI workspace for adapting prose source text into
       properly formatted screenplay scenes, powered by locally running <a href="https://ollama.com" style="color:var(--accent)">Ollama</a> models &mdash; no cloud, no API key.
@@ -212,7 +212,7 @@
     <section class="meta" aria-label="Release details">
       <div class="stat">
         <span class="stat-label">Version</span>
-        <span class="stat-value">0.2</span>
+        <span class="stat-value">0.5</span>
       </div>
       <div class="stat">
         <span class="stat-label">Package</span>
@@ -225,23 +225,24 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.2/FilmPad-v0.2-x86_64.AppImage">&#8659; Download AppImage</a>
+      <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.5/FilmPad-v0.5-x86_64.AppImage">&#8659; Download AppImage</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad">GitHub Repository</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad/releases">All Releases</a>
     </div>
 
     <p class="footnote">
-      <code>chmod +x FilmPad-v0.2-x86_64.AppImage &amp;&amp; ./FilmPad-v0.2-x86_64.AppImage</code>
+      <code>chmod +x FilmPad-v0.5-x86_64.AppImage &amp;&amp; ./FilmPad-v0.5-x86_64.AppImage</code>
     </p>
 
-    <h2>What&rsquo;s new in v0.2</h2>
+    <h2>What&rsquo;s new in v0.5</h2>
     <ul>
-      <li><strong>Dark theme</strong> &mdash; full dark mode on by default; system accent colour used for selection highlights; Light/Dark toggle in toolbar</li>
-      <li><strong>Writer AI comparison pane</strong> &mdash; AI output opens in a side-by-side Original vs Proposed review window before any change is applied; right pane is editable</li>
-      <li><strong>Screenplay auto-formatter</strong> &mdash; accepted AI output is automatically tagged with WGA-standard styles (Scene Heading, Character, Dialogue, Transition, Action)</li>
-      <li><strong>Transcribe into Script Format</strong> &mdash; strict verbatim prompt; preserves all content, transitions, and dialogue without summarising or inventing</li>
-      <li><strong>Project knowledge folder</strong> &mdash; keeps names and locations consistent without letting the AI import new content from it</li>
-      <li><strong>Crisp icons</strong> &mdash; SVG + PNG at all sizes; Plank dock grouping fixed</li>
+      <li><strong>Line numbers</strong> &mdash; gutter on the left of the writer pad, stays in sync while scrolling</li>
+      <li><strong>Auto Transcript log</strong> &mdash; shows Started / Block / Position / Last Saved line numbers while running</li>
+      <li><strong>Auto-save after each block</strong> &mdash; file is silently saved after every completed block</li>
+      <li><strong>Ollama diagnostics</strong> &mdash; pre-flight check before any AI operation: detects missing Ollama, server not running, model not downloaded; shows actionable error dialogs</li>
+      <li><strong>Timeout handling</strong> &mdash; 3-minute block timeout for Auto Transcript, 5-minute timeout for Writer AI; clear message with model suggestion on timeout</li>
+      <li><strong>Mac path discovery</strong> &mdash; finds Ollama at <code>/opt/homebrew/bin/ollama</code> and <code>/usr/local/bin/ollama</code> when not on PATH</li>
+      <li><strong>doctor.sh</strong> &mdash; system readiness check script; diagnoses Python, Tkinter, Ollama, models, FUSE</li>
     </ul>
 
     <h2>Features</h2>
