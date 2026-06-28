@@ -1512,31 +1512,43 @@ class FilmPad:
     _AT_SAFE_NEXT_STEP_DELAY_MS = 1200
 
     _AT_PROMPT_DEFAULT = (
-        "Reformat the following text as a properly laid-out screenplay.\n\n"
-        "STRICT RULES:\n"
-        "1. Preserve every word verbatim: action lines, descriptions, situational "
-        "notes, transitions, and all dialogue \u2014 do NOT cut, summarise, or paraphrase "
-        "anything, not even a single sentence.\n"
-        "2. Do NOT add anything not in the source: no notes, no [bracketed placeholders], "
-        "no \u2018Dialogue not provided\u2019, no confidence scores, no commentary, "
-        "no preamble \u2014 nothing.\n"
-        "3. Scene headings (INT./EXT. or bare location lines): ALL CAPS, own line.\n"
-        "4. Transitions (CUT TO, INTERCUT, FADE TO, etc.): ALL CAPS, own line, copied exactly as written.\n"
-        "5. When a character speaks: put the character name in ALL CAPS on its own line, "
-        "then their words on the next line, copied letter-for-letter.\n"
-        "6. Everything else becomes an action line \u2014 copy it word for word.\n"
-        "7. Do NOT merge, split, or reorder scenes.\n\n"
+        "Reformat the following raw text as a properly formatted screenplay.\n\n"
+        "FORMAT RULES:\n"
+        "1. Scene headings (INT./EXT./INT.-EXT. LOCATION \u2014 TIME): ALL CAPS, own line.\n"
+        "2. Action lines: present tense, short visual paragraphs. One blank line between blocks.\n"
+        "3. Character names: ALL CAPS on their own line directly above dialogue.\n"
+        "4. Dialogue: immediately below the character name line.\n"
+        "5. Parentheticals: on their own line between character name and dialogue, "
+        "only when delivery is not clear from context.\n"
+        "6. Transitions (CUT TO:, FADE TO:, MATCH CUT TO:, SMASH CUT TO:, "
+        "INTERCUT WITH:, etc.): ALL CAPS, own line, ending with a colon.\n"
+        "7. Inserts and labels (INSERT \u2014 DESCRIPTION:, ON THE SCREEN:, "
+        "BACK TO SCENE): ALL CAPS, own line.\n\n"
+        "STRICT CONTENT RULES:\n"
+        "8. Copy every word VERBATIM \u2014 do NOT cut, summarise, paraphrase, "
+        "or rearrange anything. Not a single word.\n"
+        "9. Do NOT add anything not present in the source: no placeholders, "
+        "no [brackets], no explanatory notes, no preamble, no extra dialogue, nothing.\n"
+        "10. Do NOT merge, split, or reorder scenes.\n\n"
         "Output the reformatted screenplay and nothing else."
     )
 
     _SS_INSTRUCTIONS_DEFAULT = (
         "Fix ONLY these issues in the SCENE TO REVIEW:\n"
-        "1. Text artifacts from block boundaries (orphaned words, duplicate lines, cut-off sentences)\n"
-        "2. Malformed scene headings (must be INT./EXT. ALL CAPS on its own line)\n"
-        "3. Character name spelling inconsistencies (use knowledge base as ground truth)\n"
-        "4. Broken dialogue attribution (missing or wrong character name)\n"
-        "5. Transitions cut off at a block boundary\n\n"
-        "Do NOT rewrite, restructure, add content, or change meaning.\n"
+        "1. Block-boundary artifacts: orphaned words, duplicated lines, "
+        "sentences cut mid-word at the start or end of the scene.\n"
+        "2. Malformed scene headings: should be INT./EXT. LOCATION \u2014 TIME "
+        "in ALL CAPS on their own line. Fix capitalisation and punctuation only \u2014 "
+        "do not rewrite the location or time.\n"
+        "3. Character name inconsistencies: use the knowledge base as ground truth. "
+        "Fix spelling and capitalisation only.\n"
+        "4. Broken dialogue attribution: a speech with no character name above it, "
+        "or the wrong character name \u2014 fix using context and knowledge base.\n"
+        "5. Truncated transitions: CUT TO:, FADE TO:, MATCH CUT TO:, SMASH CUT TO: etc. "
+        "cut off at a block boundary \u2014 restore the full transition label with its colon.\n"
+        "6. Malformed INSERT or BACK TO SCENE labels: fix to ALL CAPS standard form.\n\n"
+        "Do NOT rewrite sentences, restructure action lines, change descriptions, "
+        "add content, or alter meaning in any way.\n"
         "If the scene has no issues, return it unchanged.\n"
         "Output ONLY the corrected scene text, nothing else."
     )
@@ -1841,26 +1853,28 @@ class FilmPad:
         self._start_script_supervisor()
 
     def _ss_get_scenes(self) -> list[tuple[str, str]]:
-        """Return (start_idx, end_idx) pairs for each scene, split by Scene Heading."""
-        scene_starts: list[str] = []
+        """Return (start_idx, end_idx) pairs for each scene, split by Scene Heading.
+        Always combines tagged 'Scene Heading' spans and regex-matched INT./EXT. lines
+        so that partially-tagged documents are fully covered."""
+        scene_line_set: set[int] = set()
+        # Pass 1: tagged Scene Heading spans
         pos = "1.0"
         while True:
             rng = self.text.tag_nextrange("Scene Heading", pos)
             if not rng:
                 break
-            heading_line = self.text.index(f"{rng[0]} linestart")
-            if not scene_starts or self.text.compare(heading_line, "!=", scene_starts[-1]):
-                scene_starts.append(heading_line)
+            ln = int(self.text.index(f"{rng[0]} linestart").split(".")[0])
+            scene_line_set.add(ln)
             pos = self.text.index(f"{rng[1]} + 1c")
             if self.text.compare(pos, ">=", "end-1c"):
                 break
-        # Fallback: regex scan for untagged headings
-        if not scene_starts:
-            total = int(self.text.index("end-1c").split(".")[0])
-            for lineno in range(1, total + 1):
-                line = self.text.get(f"{lineno}.0", f"{lineno}.end").strip()
-                if line and self._AT_SLUG_RE.match(line):
-                    scene_starts.append(f"{lineno}.0")
+        # Pass 2: regex scan — catches untagged INT./EXT. lines (always runs)
+        total_lines = int(self.text.index("end-1c").split(".")[0])
+        for lineno in range(1, total_lines + 1):
+            line = self.text.get(f"{lineno}.0", f"{lineno}.end").strip()
+            if line and self._AT_SLUG_RE.match(line):
+                scene_line_set.add(lineno)
+        scene_starts = [f"{ln}.0" for ln in sorted(scene_line_set)]
         scenes: list[tuple[str, str]] = []
         for i, start in enumerate(scene_starts):
             if i < len(scene_starts) - 1:
@@ -2145,7 +2159,7 @@ class FilmPad:
         win.protocol("WM_DELETE_WINDOW", lambda: None)
 
         self.root.update_idletasks()
-        w, h = 420, 220
+        w, h = 420, 270
         rx = self.root.winfo_rootx() + self.root.winfo_width() // 2 - w // 2
         ry = self.root.winfo_rooty() + self.root.winfo_height() // 2 - h // 2
         win.geometry(f"{w}x{h}+{rx}+{ry}")
@@ -2171,7 +2185,12 @@ class FilmPad:
         self._progress_bar.pack(fill="x")
         self._progress_bar.start(10)
 
-        ttk.Button(outer, text="Cancel", command=self._cancel_writer_ai_edit).pack(pady=(12, 0))
+        ttk.Label(outer, text="Overall document progress:",
+                  font=("TkDefaultFont", 8), foreground="#888").pack(anchor="w", pady=(8, 0))
+        ttk.Progressbar(outer, variable=self._at_progress_var,
+                        mode="determinate", maximum=100, length=370).pack(fill="x")
+
+        ttk.Button(outer, text="Cancel", command=self._cancel_writer_ai_edit).pack(pady=(10, 0))
 
     def _cancel_writer_ai_edit(self) -> None:
         if self._script_supervisor_running:

@@ -1,18 +1,22 @@
-Reformat the following text as a properly laid-out screenplay.
+Reformat the following raw text as a properly formatted screenplay.
 
-STRICT RULES:
-1. Preserve every word verbatim: action lines, descriptions, situational notes,
-   transitions, and all dialogue — do NOT cut, summarise, or paraphrase anything,
-   not even a single sentence.
-2. Do NOT add anything not in the source: no notes, no [bracketed placeholders],
-   no 'Dialogue not provided', no confidence scores, no commentary, no preamble
-   — nothing.
-3. Scene headings (INT./EXT. or bare location lines): ALL CAPS, own line.
-4. Transitions (CUT TO, INTERCUT, FADE TO, etc.): ALL CAPS, own line, copied
-   exactly as written.
-5. When a character speaks: put the character name in ALL CAPS on its own line,
-   then their words on the next line, copied letter-for-letter.
-6. Everything else becomes an action line — copy it word for word.
-7. Do NOT merge, split, or reorder scenes.
+FORMAT RULES:
+1. Scene headings (INT./EXT./INT.-EXT. LOCATION — TIME): ALL CAPS, own line.
+2. Action lines: present tense, short visual paragraphs. One blank line between blocks.
+3. Character names: ALL CAPS on their own line directly above dialogue.
+4. Dialogue: immediately below the character name line.
+5. Parentheticals: on their own line between character name and dialogue,
+   only when delivery is not clear from context.
+6. Transitions (CUT TO:, FADE TO:, MATCH CUT TO:, SMASH CUT TO:,
+   INTERCUT WITH:, etc.): ALL CAPS, own line, ending with a colon.
+7. Inserts and labels (INSERT — DESCRIPTION:, ON THE SCREEN:,
+   BACK TO SCENE): ALL CAPS, own line.
+
+STRICT CONTENT RULES:
+8. Copy every word VERBATIM — do NOT cut, summarise, paraphrase,
+   or rearrange anything. Not a single word.
+9. Do NOT add anything not present in the source: no placeholders,
+   no [brackets], no explanatory notes, no preamble, no extra dialogue, nothing.
+10. Do NOT merge, split, or reorder scenes.
 
 Output the reformatted screenplay and nothing else.

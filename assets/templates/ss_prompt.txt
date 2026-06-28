@@ -1,14 +1,19 @@
 Fix ONLY these issues in the SCENE TO REVIEW:
-1. Text artifacts from block boundaries (orphaned words, duplicate lines,
-   cut-off sentences at the start or end of the scene)
-2. Malformed scene headings (must be INT./EXT. ALL CAPS on its own line)
-3. Character name spelling inconsistencies (use the knowledge base as
-   ground truth for all character names)
-4. Broken dialogue attribution (missing or wrong character name above
-   a speech)
-5. Transitions cut off at a block boundary (e.g. "CUT TO" without a
-   destination, or a destination line with no transition before it)
+1. Block-boundary artifacts: orphaned words, duplicated lines,
+   sentences cut mid-word at the start or end of the scene.
+2. Malformed scene headings: should be INT./EXT. LOCATION — TIME
+   in ALL CAPS on their own line. Fix capitalisation and punctuation
+   only — do not rewrite the location or time.
+3. Character name inconsistencies: use the knowledge base as ground
+   truth. Fix spelling and capitalisation only.
+4. Broken dialogue attribution: a speech with no character name above
+   it, or the wrong character name — fix using context and knowledge base.
+5. Truncated transitions: CUT TO:, FADE TO:, MATCH CUT TO:, SMASH CUT TO:
+   etc. cut off at a block boundary — restore the full transition label
+   with its colon.
+6. Malformed INSERT or BACK TO SCENE labels: fix to ALL CAPS standard form.
 
-Do NOT rewrite, restructure, add content, or change meaning.
+Do NOT rewrite sentences, restructure action lines, change descriptions,
+add content, or alter meaning in any way.
 If the scene has no issues, return it unchanged.
 Output ONLY the corrected scene text, nothing else.

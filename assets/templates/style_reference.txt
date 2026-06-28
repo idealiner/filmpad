@@ -1,75 +1,436 @@
-STYLE REFERENCE
-===============
-This file shows the exact output format required. Use it as a formatting
-guide only — do NOT incorporate its content into the screenplay.
+STYLE REFERENCE — SCREENPLAY OUTPUT GUIDE
+=========================================
+Use this file as a formatting and style guide only. Do NOT copy its plot,
+characters, situations, jokes, dialogue, or imagery into the screenplay.
+
+The goal is not to imitate one movie. The goal is to produce clean,
+professional screenplay pages with the clarity, speed, and readability of
+classic studio scripts: visual action, economical description, readable
+dialogue, and scene movement that can be understood immediately by a reader,
+producer, actor, or director.
 
 -------------------------------------------------------------------------------
 
-INT. DETECTIVE'S OFFICE - NIGHT
+CORE FORMAT
+-----------
 
-Rain against the window. SARAH COLE, 40s, sits across from a desk buried in
-files. Her coat is still wet.
+Use standard screenplay format:
 
-The door opens. DETECTIVE RAY MURTAGH, 50s, enters carrying two paper cups.
+INT./EXT. LOCATION - TIME
 
-MURTAGH
-Sorry about the wait.
+Action lines are written in present tense.
 
-He sets a cup in front of her without asking.
+Character names are centered/uppercase above dialogue.
 
-SARAH
-You said on the phone you found something.
+Dialogue is compact and playable.
 
-MURTAGH
-We found the car. Torched. Out past the reservoir.
+Parentheticals are used sparingly, only when the delivery or action is not
+already clear.
 
-Sarah looks down at her hands. A long beat.
+Transitions are used only when useful:
 
-SARAH
-Anyone inside?
+CUT TO:
+FADE TO:
+MATCH CUT TO:
+SMASH CUT TO:
 
-MURTAGH
-No. Just the car.
+Do not overuse transitions.
+
+-------------------------------------------------------------------------------
+
+PAGE STYLE TARGET
+-----------------
+
+The page should feel clean, visual, and breathable.
+
+Use short action paragraphs. One to three lines is ideal. Longer blocks are
+allowed only when the character is explaining something important or when a
+single idea needs sustained momentum.
+
+The writing should move like this:
+
+- Establish the physical space quickly.
+- Give the actor a clear playable action.
+- Let dialogue carry character and conflict.
+- Use silence, objects, and small behavior to reveal emotion.
+- Avoid novelistic explanation.
+- Avoid inner thoughts unless they are shown through behavior.
+
+Good screenplay prose is not “beautiful writing” on the page. It is clear
+filmmaking.
+
+-------------------------------------------------------------------------------
+
+ACTION LINE RULES
+-----------------
+
+Use precise, filmable action.
+
+Prefer:
+
+Rain hammers the office window.
+
+Not:
+
+The rain seems to express Sarah's deep internal sadness.
+
+Prefer:
+
+Richard stops at the elevator doors. Doesn't press the button.
+
+Not:
+
+Richard feels uncertain about whether he should leave.
+
+Action should describe what the camera can see or hear.
+
+Keep action blocks short unless there is a strong reason to hold the reader
+inside one uninterrupted visual or explanatory movement.
+
+-------------------------------------------------------------------------------
+
+DIALOGUE STYLE
+--------------
+
+Dialogue should be direct, character-specific, and easy to perform.
+
+Do not make characters explain the plot unless the scene is built for
+explanation.
+
+When exposition is necessary, make it active. Give the speaker something to do
+or a reason to speak. The Indiana Jones classroom-style reference works because
+the explanation has personality, movement, and escalating discovery. It is not
+dead information.
+
+Use interruptions, fragments, and compression when appropriate.
+
+Good:
+
+LILI
+You opened it?
+
+RICHARD
+No.
+
+LILI
+Dad.
+
+A beat.
+
+RICHARD
+I didn't open it all the way.
+
+Bad:
+
+LILI
+Father, I am concerned because the envelope represents a larger mystery that
+may connect to your past.
+
+Characters should not speak the subtext too early.
+
+-------------------------------------------------------------------------------
+
+EXPOSITION RULES
+----------------
+
+When a character must explain something technical, historical, medical,
+corporate, or mythological:
+
+1. Put the explanation inside a dramatic situation.
+2. Let the speaker have attitude.
+3. Break the information into beats.
+4. Use physical action, props, diagrams, screens, or interruptions.
+5. Let another character ask the obvious question.
+6. Stop before the speech becomes an essay.
+
+The Indiana Jones reference demonstrates a useful rhythm:
+
+- confident explanation
+- rough visual aid or physical indication
+- informal clarification
+- mystery detail
+- interruption/question
+- sharper conclusion
+
+Use that rhythm without copying any content.
+
+-------------------------------------------------------------------------------
+
+ENSEMBLE / COMEDIC TIMING
+-------------------------
+
+The Inside Out-style reference is useful for timing, not content.
+
+When cutting between a real-world action and an inner/secondary space, keep the
+rhythm simple:
+
+1. Real-world stimulus.
+2. Secondary-space reaction.
+3. Decision/action.
+4. Immediate real-world consequence.
+5. Short aftermath beat.
+
+Use clear labels when needed:
+
+ON THE SCREEN:
+INSERT — PHONE SCREEN:
+BACK TO SCENE:
+INTERCUT WITH:
+
+Do not overcomplicate cross-cutting. The reader should never be confused about
+where they are.
+
+-------------------------------------------------------------------------------
+
+EMOTIONAL DRAMA STYLE
+---------------------
+
+The hospital-style reference is useful for emotional restraint.
+
+In emotional scenes:
+
+- Let characters try to stay composed.
+- Use small physical gestures.
+- Avoid long speeches unless the character is deliberately trying to persuade,
+  comfort, confess, or avoid the truth.
+- Let the most important line be simple.
+- Use pauses and beats sparingly.
+
+A powerful emotional scene does not need to announce that it is emotional.
+
+Prefer:
+
+Victoria touches the back of the chair, steadying herself.
+
+Not:
+
+Victoria is devastated and can barely handle the emotional magnitude of the
+moment.
+
+-------------------------------------------------------------------------------
+
+ADVENTURE / DISCOVERY RHYTHM
+----------------------------
+
+The Indiana Jones-style reference is useful for giving exposition energy.
+
+For discovery scenes:
+
+- Let the lead character think out loud.
+- Allow a rough diagram, map, prop, object, file, or screen to organize the
+  explanation.
+- Use casual phrases to keep the information human.
+- Build toward one clear reveal.
+- End the explanation with a consequence, danger, destination, or decision.
+
+The point is forward motion. Every explanation should push the story into the
+next action.
+
+-------------------------------------------------------------------------------
+
+BACK TO THE FUTURE-STYLE CAUSE AND EFFECT
+-----------------------------------------
+
+For scenes involving devices, plans, timelines, experiments, or impossible
+premises, use crisp cause-and-effect logic.
+
+The reader should always understand:
+
+- what the character wants
+- what the obstacle is
+- what must happen next
+- what happens if it fails
+- what changes because of the scene
+
+Keep the tone practical. Even strange ideas feel believable when characters
+treat them as urgent, mechanical, and specific.
+
+-------------------------------------------------------------------------------
+
+VOICE AND TONE
+--------------
+
+Target tone:
+
+- cinematic
+- clean
+- tense
+- visual
+- emotionally restrained
+- lightly ironic when the situation allows it
+- never over-explanatory
+- never purple or literary for its own sake
+
+The prose should feel like a director’s blueprint, not a novel adaptation.
+
+-------------------------------------------------------------------------------
+
+LINE-LEVEL RULES
+----------------
+
+Use active verbs.
+
+Use specific nouns.
+
+Avoid adverbs unless absolutely necessary.
+
+Avoid “we see” unless the camera point of view matters.
+
+Avoid camera directions unless essential.
+
+Avoid explaining facial expressions too much.
+
+Prefer behavior over psychology.
+
+Use white space.
+
+One action beat can carry more power than a paragraph.
+
+-------------------------------------------------------------------------------
+
+MINI STYLE EXAMPLE — GENERAL FORMAT ONLY
+----------------------------------------
+
+INT. OFFICE - NIGHT
+
+Rain ticks against the glass. The city beyond Lexington is a smear of blue
+and red light.
+
+RICHARD ISAIAH stands over his desk, still in his coat. The envelope lies
+between his hands.
+
+LILI
+You were going to tell me?
+
+Richard doesn't answer.
+
+She looks at the envelope.
+
+LILI (CONT'D)
+Dad.
+
+He slides it into the drawer.
+
+RICHARD
+Not tonight.
+
+Lili studies him. Whatever this is, it has already happened before.
 
 CUT TO:
 
-EXT. RESERVOIR ROAD - NIGHT
+INT. ELEVATOR - NIGHT
 
-Headlights. A police tape line flaps in the wind. Beyond it, the charred
-shell of a sedan.
+The doors close.
 
-Murtagh and Sarah stand at the tape. A FORENSIC TECH crouches near the
-rear wheel arch, photographing something.
+Richard watches his reflection split in the metal seam.
 
-MURTAGH
-Paint transfer. Other vehicle hit it before it burned.
+His phone buzzes.
 
-SARAH
-What colour?
+INSERT — PHONE SCREEN: Unknown Number.
 
-MURTAGH
-White. Or light grey. Lab'll know more by morning.
+A single message:
 
-SARAH
-(quietly)
-He was there.
-
-Murtagh doesn't answer. He already knows.
-
-FADE TO:
-
-INT. SARAH'S APARTMENT - DAWN
-
-The room is dark. Sarah sits on the floor, back against the couch, the
-paper cup still in her hand, cold now. She hasn't slept.
-
-Her phone buzzes. She looks at the screen.
-
-INSERT — PHONE SCREEN: a single text message. "Don't look for it."
+DON'T OPEN THE SECOND ONE.
 
 BACK TO SCENE
 
-Sarah puts the phone face-down on the floor.
+Richard's thumb hovers over the screen.
+
+The elevator drops.
+
+-------------------------------------------------------------------------------
+
+MINI STYLE EXAMPLE — EXPOSITION WITH MOVEMENT
+---------------------------------------------
+
+INT. CONFERENCE ROOM - MORNING
+
+A frozen satellite image fills the screen.
+
+Ronny drags a marker across the glass wall, drawing a rough circle around the
+coastline.
+
+RONNY
+This isn't weather. Not exactly.
+
+Brookes watches from the end of the table.
+
+BROOKES
+Then what is it?
+
+Ronny marks three points. Connects them.
+
+RONNY
+A pattern pretending to be weather.
+
+Richard leans forward.
+
+RICHARD
+Pretending for who?
+
+Ronny doesn't like the question. Mostly because he knows the answer.
+
+-------------------------------------------------------------------------------
+
+MINI STYLE EXAMPLE — EMOTIONAL RESTRAINT
+----------------------------------------
+
+INT. APARTMENT KITCHEN - DAWN
+
+The coffee maker clicks off.
+
+Victoria stands beside it, barefoot, still wearing yesterday's sweater.
+
+Richard enters. Stops when he sees her.
+
+VICTORIA
+Did you sleep?
+
+RICHARD
+A little.
+
+She nods, as if that helps.
+
+VICTORIA
+Lili called twice.
+
+Richard looks toward the hallway.
+
+VICTORIA (CONT'D)
+I told her you were painting.
+
+He almost smiles.
+
+RICHARD
+Was I?
+
+Victoria picks up the mug but doesn't drink.
+
+VICTORIA
+No.
+
+A long beat.
+
+The city outside begins to wake.
+
+-------------------------------------------------------------------------------
+
+FINAL OUTPUT REQUIREMENTS
+-------------------------
+
+When rewriting or adapting screenplay pages:
+
+- Preserve the story facts provided by the source material.
+- Do not invent major new plot points unless asked.
+- Do not copy dialogue from unrelated examples.
+- Do not pad scenes.
+- Do not explain the theme inside the scene.
+- Use clean screenplay formatting.
+- Keep action visual and present tense.
+- Keep dialogue playable.
+- Make exposition active.
+- Make emotional scenes restrained.
+- Make every scene turn, reveal, or pressure the next scene.
 
 -------------------------------------------------------------------------------
 END OF STYLE REFERENCE
