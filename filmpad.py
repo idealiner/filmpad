@@ -209,6 +209,10 @@ class FilmPad:
         self._auto_transcript_cancelled = False
         self._auto_transcript_process: subprocess.Popen | None = None
         self._auto_transcript_safe_mode_var = tk.BooleanVar(value=True)
+        self._at_extract_knowledge_var = tk.BooleanVar(value=False)
+        self._at_known_chars: dict = {}   # {name: {dialogue, refs, scenes}}
+        self._at_known_locs: dict = {}    # {heading: [action_lines]}
+        self._at_current_loc: str = ""
         self._auto_transcript_btn: ttk.Button | None = None
         self._auto_transcript_block_num: int = 0
         self._at_start_line: int = 0
@@ -1190,6 +1194,11 @@ class FilmPad:
             text="Safe mode (smaller steps, slower, more stable)",
             variable=self._auto_transcript_safe_mode_var,
         ).pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(
+            self._writer_ai_content,
+            text="Extract knowledge to project folder",
+            variable=self._at_extract_knowledge_var,
+        ).pack(anchor="w", pady=(2, 0))
 
         ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 4))
         ttk.Label(
@@ -1570,6 +1579,8 @@ class FilmPad:
         r"DISSOLVE\s+TO|WIPE\s+TO|INTERCUT|TIME\s+CUT|JUMP\s+CUT)",
         re.IGNORECASE,
     )
+    # Character name: ALL CAPS line, optional parenthetical suffix
+    _AT_CHAR_NAME_RE = re.compile(r"^([A-Z][A-Z0-9 '.\-]{1,})(?:\s*\([^)]*\))?\s*$")
     _AT_MAX_CHARS = 2200  # max chars per block (leaves headroom for prompt)
     _AT_SAFE_MAX_CHARS = 1200
     _AT_NEXT_STEP_DELAY_MS = 300
@@ -1701,6 +1712,9 @@ class FilmPad:
             return
         self._auto_transcript_cancelled = False
         self._auto_transcript_process = None
+        self._at_known_chars = {}
+        self._at_known_locs = {}
+        self._at_current_loc = ""
         try:
             start_pos = self.text.index(tk.INSERT)
         except tk.TclError:
@@ -1729,9 +1743,16 @@ class FilmPad:
         if result is None:
             self._auto_transcript_running = False
             self._at_progress_var.set(100.0)
+            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
             if self._auto_transcript_btn:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
-            self.writer_ai_status_var.set("Auto transcript complete.")
+            if (self._at_extract_knowledge_var.get()
+                    and (self._at_known_chars or self._at_known_locs)):
+                self.writer_ai_status_var.set("Writing knowledge files\u2026")
+                self._at_log_var.set("Writing knowledge files\u2026")
+                self.root.after(200, self._at_write_knowledge_files)
+            else:
+                self.writer_ai_status_var.set("Auto transcript complete.")
             return
         block_text, block_start, block_end = result
         self._auto_transcript_block_start = block_start
@@ -1869,6 +1890,8 @@ class FilmPad:
             self.text.mark_gravity("_at_cursor", "right")
             self.text.see(ins_end)
             self._auto_transcript_autosave()
+            if self._at_extract_knowledge_var.get():
+                self._at_parse_block_for_knowledge(cleaned)
         except tk.TclError as exc:
             self._auto_transcript_running = False
             self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
@@ -1904,6 +1927,214 @@ class FilmPad:
             f"Started: L{self._at_start_line} | Block: {self._auto_transcript_block_num}"
             f" | Pos: L{cur_line} | Saved: {self._at_last_saved_label()}"
         )
+
+    # ── AT Knowledge Extraction ──────────────────────────────────────────
+
+    def _at_parse_block_for_knowledge(self, text: str) -> None:
+        """Parse a formatted screenplay block; update character/location knowledge."""
+        lines = text.splitlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if not line:
+                i += 1
+                continue
+            # Scene heading
+            if self._AT_SLUG_RE.match(line):
+                heading = line.upper().rstrip()
+                self._at_current_loc = heading
+                if heading not in self._at_known_locs:
+                    self._at_known_locs[heading] = []
+                i += 1
+                continue
+            # Transition
+            if self._AT_TRANS_RE.match(line):
+                i += 1
+                continue
+            # Character name: ALL CAPS, no colon, no dash
+            if (line == line.upper() and len(line) >= 2
+                    and ':' not in line
+                    and '\u2014' not in line
+                    and '\u2013' not in line):
+                char_name = re.sub(r'\s*\([^)]*\)\s*$', '', line).strip()
+                if char_name and len(char_name) >= 2:
+                    if char_name not in self._at_known_chars:
+                        self._at_known_chars[char_name] = {
+                            'dialogue': [], 'refs': [], 'scenes': set()
+                        }
+                    if self._at_current_loc:
+                        self._at_known_chars[char_name]['scenes'].add(self._at_current_loc)
+                    # Next non-empty line is the dialogue
+                    j = i + 1
+                    while j < len(lines) and not lines[j].strip():
+                        j += 1
+                    if j < len(lines):
+                        dl = lines[j].strip()
+                        # Dialogue is mixed-case (not pure uppercase action)
+                        if dl and not (dl == dl.upper() and len(dl) > 3):
+                            if len(self._at_known_chars[char_name]['dialogue']) < 30:
+                                self._at_known_chars[char_name]['dialogue'].append(dl)
+                            i = j + 1
+                            continue
+                i += 1
+                continue
+            # Action line — log under current location; note character mentions
+            if self._at_current_loc and len(
+                self._at_known_locs.get(self._at_current_loc, [])
+            ) < 12:
+                self._at_known_locs[self._at_current_loc].append(line)
+            for char_name in list(self._at_known_chars):
+                if char_name in line and len(
+                    self._at_known_chars[char_name]['refs']
+                ) < 30:
+                    self._at_known_chars[char_name]['refs'].append(line)
+            i += 1
+
+    def _at_write_knowledge_files(self) -> None:
+        """Write per-character and per-location .md files, then spawn project_memory."""
+        folder = self.writer_ai_project_folder_var.get().strip()
+        if not folder:
+            self._at_log_var.set("Extract: no project folder set.")
+            self.writer_ai_status_var.set("Auto transcript complete.")
+            return
+        folder_path = pathlib.Path(folder)
+        written = 0
+
+        # Character files
+        for char_name, data in self._at_known_chars.items():
+            fname = re.sub(r'[^\w]', '_', char_name).strip('_')[:50] + '.md'
+            parts = [f"# {char_name}\n\n"]
+            scenes = sorted(data.get('scenes', set()))
+            if scenes:
+                parts.append(f"**Appears in:** {len(scenes)} scene(s)\n\n")
+                for s in scenes[:10]:
+                    parts.append(f"- {s}\n")
+                parts.append("\n")
+            dialogue = data.get('dialogue', [])
+            if dialogue:
+                parts.append("## Dialogue\n\n")
+                for dl in dialogue:
+                    parts.append(f'- "{dl}"\n')
+                parts.append("\n")
+            refs = data.get('refs', [])
+            if refs:
+                parts.append("## Referenced in action\n\n")
+                for r in refs:
+                    parts.append(f"- {r}\n")
+            (folder_path / fname).write_text("".join(parts), encoding="utf-8")
+            written += 1
+
+        # Location files
+        for loc_heading, action_lines in self._at_known_locs.items():
+            slug = re.sub(
+                r'^(INT\.|EXT\.|INT\./EXT\.|I/E\.)\s*', '', loc_heading,
+                flags=re.IGNORECASE,
+            )
+            slug = re.sub(r'\s*[\u2014\u2013\-]+\s*.*$', '', slug).strip()
+            slug = re.sub(r'[^\w]', '_', slug).strip('_')[:50]
+            if not slug:
+                continue
+            fname = slug.upper() + '.md'
+            parts = [f"# {loc_heading}\n\n"]
+            if action_lines:
+                parts.append("## Action lines\n\n")
+                for al in action_lines:
+                    parts.append(f"- {al}\n")
+            (folder_path / fname).write_text("".join(parts), encoding="utf-8")
+            written += 1
+
+        self._at_log_var.set(f"Wrote {written} knowledge files. Generating project_memory\u2026")
+
+        # project_memory.md — LLM synthesis
+        model = self.writer_ai_model_var.get().strip()
+        if not model or not shutil.which("ollama"):
+            self.writer_ai_status_var.set("Auto transcript complete.")
+            self._at_log_var.set(f"Wrote {written} files. (No model for project_memory.)")
+            return
+
+        char_summary = "\n".join(
+            f"- {n}: {len(d.get('dialogue', []))} dialogue lines, "
+            f"{len(d.get('scenes', set()))} scenes"
+            for n, d in list(self._at_known_chars.items())[:40]
+        )
+        loc_list = "\n".join(
+            f"- {loc}" for loc in list(self._at_known_locs.keys())[:40]
+        )
+        sample_dialogue_parts = []
+        for n, d in list(self._at_known_chars.items())[:12]:
+            for dl in d.get('dialogue', [])[:3]:
+                sample_dialogue_parts.append(f'{n}: "{dl}"')
+
+        pm_prompt = (
+            "You are analysing a screenplay. Using the extracted data below, "
+            "write a project_memory.md file in markdown with these sections:\n"
+            "## Characters\nBrief role description for each character.\n"
+            "## Key Events\nMajor plot beats inferred from the data.\n"
+            "## Relationships\nNotable connections between characters.\n"
+            "## Locations\nBrief description of each key location.\n\n"
+            f"CHARACTERS:\n{char_summary}\n\n"
+            f"LOCATIONS IN SCRIPT ORDER:\n{loc_list}\n\n"
+            "SAMPLE DIALOGUE:\n" + "\n".join(sample_dialogue_parts[:30]) + "\n\n"
+            "Output only the markdown content for project_memory.md."
+        )
+        threading.Thread(
+            target=self._at_write_project_memory_thread,
+            args=(folder_path, model, pm_prompt),
+            daemon=True,
+        ).start()
+
+    def _at_write_project_memory_thread(
+        self, folder_path: pathlib.Path, model: str, prompt: str
+    ) -> None:
+        """Background thread: call Ollama and write project_memory.md."""
+        import os as _os
+        try:
+            ollama_bin = shutil.which("ollama") or "ollama"
+            env = {**_os.environ, "COLUMNS": "10000", "TERM": "dumb"}
+            proc = subprocess.Popen(
+                [ollama_bin, "run", model],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
+            try:
+                out, _ = proc.communicate(input=prompt.encode("utf-8"), timeout=300)
+                content = out.decode("utf-8", errors="replace").strip()
+                if content:
+                    content = self._sanitize_local_ai_output(content)
+                    (folder_path / "project_memory.md").write_text(
+                        content, encoding="utf-8"
+                    )
+                    self.root.after(0, lambda: self._at_log_var.set(
+                        "Knowledge extraction complete — project_memory.md written."
+                    ))
+                    self.root.after(0, lambda: self.writer_ai_status_var.set(
+                        "Auto transcript complete."
+                    ))
+                else:
+                    self.root.after(0, lambda: self._at_log_var.set(
+                        "Extract: project_memory.md — empty model output."
+                    ))
+                    self.root.after(0, lambda: self.writer_ai_status_var.set(
+                        "Auto transcript complete."
+                    ))
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                self.root.after(0, lambda: self._at_log_var.set(
+                    "Extract: project_memory.md — timed out."
+                ))
+                self.root.after(0, lambda: self.writer_ai_status_var.set(
+                    "Auto transcript complete."
+                ))
+        except Exception as exc:
+            self.root.after(0, lambda msg=str(exc): self._at_log_var.set(
+                f"Extract error: {msg}"
+            ))
+            self.root.after(0, lambda: self.writer_ai_status_var.set(
+                "Auto transcript complete."
+            ))
 
     # ── Script Supervisor ───────────────────────────────────────────────
 
