@@ -1039,6 +1039,7 @@ class FilmPad:
             except tk.TclError:
                 pass
         self.editor_frame.bind("<Configure>", _enforce_max_wa_width)
+        outer.bind("<Configure>", _enforce_max_wa_width)  # fires on sash drag
 
         self._writer_ai_toggle_btn = ttk.Button(
             outer, text="\u25b6", width=3, command=self._toggle_writer_ai_sidebar
@@ -1224,6 +1225,17 @@ class FilmPad:
         self._writer_ai_panel_canvas.bind("<Button-4>", _wa_mw)
         self._writer_ai_panel_canvas.bind("<Button-5>", _wa_mw)
         self._writer_ai_panel_canvas.bind("<MouseWheel>", _wa_mw)
+
+        # Dynamic wraplength: update description labels when panel is resized
+        def _refresh_label_wraps(event=None) -> None:
+            w = self._writer_ai_content.winfo_width()
+            if w < 50:
+                return
+            new_wrap = max(80, w - 16)
+            for child in self._writer_ai_content.winfo_children():
+                if isinstance(child, ttk.Label):
+                    child.configure(wraplength=new_wrap)
+        self._writer_ai_content.bind("<Configure>", _refresh_label_wraps, add="+")
 
     def _toggle_writer_ai_sidebar(self) -> None:
         total = self.editor_frame.winfo_width()
