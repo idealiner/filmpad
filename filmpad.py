@@ -1028,6 +1028,8 @@ class FilmPad:
         self.editor_frame.add(outer, stretch="never", minsize=32)
 
         def _enforce_max_wa_width(event=None) -> None:
+            if getattr(self, "_wa_enforcing", False):
+                return
             total = self.editor_frame.winfo_width()
             if total < 100:
                 return
@@ -1035,9 +1037,11 @@ class FilmPad:
             try:
                 sx = self.editor_frame.sash_coord(0)[0]
                 if total - sx > max_wa:
+                    self._wa_enforcing = True
                     self.editor_frame.sash_place(0, total - max_wa, 0)
+                    self._wa_enforcing = False
             except tk.TclError:
-                pass
+                self._wa_enforcing = False
         self.editor_frame.bind("<Configure>", _enforce_max_wa_width)
         outer.bind("<Configure>", _enforce_max_wa_width)  # fires on sash drag
 
@@ -2250,6 +2254,8 @@ class FilmPad:
         rx = self.root.winfo_rootx() + self.root.winfo_width() // 2 - w // 2
         ry = self.root.winfo_rooty() + self.root.winfo_height() // 2 - h // 2
         win.geometry(f"{w}x{h}+{rx}+{ry}")
+        win.lift()
+        win.focus_force()
 
         outer = ttk.Frame(win, padding=(24, 18, 24, 14))
         outer.pack(fill="both", expand=True)
