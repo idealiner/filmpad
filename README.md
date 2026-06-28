@@ -4,20 +4,20 @@ FilmPad is a screenplay editor and local AI adaptation tool built with Python an
 
 ## Download
 
-> **Latest release: v0.5** — [All releases](https://github.com/idealiner/filmpad/releases)
+> **Latest release: v0.6** — [All releases](https://github.com/idealiner/filmpad/releases)
 
 | Platform | Download |
 |----------|---------|
-| **Linux x86_64** | [FilmPad-v0.5-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.5/FilmPad-v0.5-x86_64.AppImage) |
-| **Diagnostics** | [doctor.sh](https://github.com/idealiner/filmpad/releases/download/v0.5/doctor.sh) |
+| **Linux x86_64** | [FilmPad-v0.6-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.6/FilmPad-v0.6-x86_64.AppImage) |
+| **Diagnostics** | [doctor.sh](https://github.com/idealiner/filmpad/releases/download/v0.6/doctor.sh) |
 
 Windows and macOS builds are not yet available. The app can be run from source on any platform — see [Running from source](#running-from-source) below.
 
 Quick start (Linux):
 
 ```bash
-chmod +x FilmPad-v0.5-x86_64.AppImage
-./FilmPad-v0.5-x86_64.AppImage
+chmod +x FilmPad-v0.6-x86_64.AppImage
+./FilmPad-v0.6-x86_64.AppImage
 ```
 
 The AppImage bundles Python and Tkinter. Only [Ollama](https://ollama.com) needs to be installed separately.
@@ -27,6 +27,13 @@ If the app does not launch on first try, download and run `doctor.sh` from the t
 ---
 
 ## Releases
+
+### v0.6 — Script Supervisor, Progress Bar & Launcher Tkinter Check
+*2026-06-28*
+
+- **Script Supervisor** — second-pass review agent that processes scenes one by one, compares each against adjacent context and the project knowledge base, and presents a side-by-side comparison for any proposed clean-up fix (Apply & Next / Skip Scene / Stop)
+- **Auto Transcript progress bar** — determinate progress bar in the Writer AI panel, shared between Auto Transcript and Script Supervisor, shows percentage of document processed
+- **Launcher Tkinter check** — `start-filmpad.sh` now detects a missing Tkinter module before the source-run fallback and shows a distro-specific install command
 
 ### v0.5 — Line Numbers, Auto Transcript Log & Auto-Save
 *2025-06-27*

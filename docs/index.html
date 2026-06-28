@@ -235,7 +235,7 @@
 <body>
   <main class="card">
     <div class="eyebrow">FilmPad &mdash; Linux release</div>
-    <h1>Download v0.5</h1>
+    <h1>Download v0.6</h1>
     <p>
       FilmPad is a screenplay editor with a built-in Local AI workspace for adapting prose source text into
       properly formatted screenplay scenes, powered by locally running <a href="https://ollama.com" style="color:var(--accent)">Ollama</a> models &mdash; no cloud, no API key.
@@ -244,7 +244,7 @@
     <section class="meta" aria-label="Release details">
       <div class="stat">
         <span class="stat-label">Version</span>
-        <span class="stat-value">0.5</span>
+        <span class="stat-value">0.6</span>
       </div>
       <div class="stat">
         <span class="stat-label">Package</span>
@@ -257,7 +257,7 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.5/FilmPad-v0.5-x86_64.AppImage">&#8659; Download AppImage</a>
+      <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.6/FilmPad-v0.6-x86_64.AppImage">&#8659; Download AppImage</a>
       <a class="button secondary" href="https://raw.githubusercontent.com/idealiner/filmpad/main/doctor.sh">Download doctor.sh</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad">GitHub Repository</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad/releases">All Releases</a>
@@ -275,12 +275,19 @@
     </section>
 
     <p class="footnote">
-      <code>chmod +x FilmPad-v0.5-x86_64.AppImage &amp;&amp; ./FilmPad-v0.5-x86_64.AppImage</code>
+      <code>chmod +x FilmPad-v0.6-x86_64.AppImage &amp;&amp; ./FilmPad-v0.6-x86_64.AppImage</code>
     </p>
 
     <p class="footnote">
       <code>chmod +x doctor.sh &amp;&amp; ./doctor.sh</code>
     </p>
+
+    <h2>What&rsquo;s new in v0.6</h2>
+    <ul>
+      <li><strong>Script Supervisor</strong> &mdash; second-pass review agent: processes scenes one by one, compares each against adjacent context and the knowledge base, and shows a side-by-side comparison for any proposed clean-up fix (Apply &amp; Next / Skip Scene / Stop)</li>
+      <li><strong>Auto Transcript progress bar</strong> &mdash; determinate progress bar in the Writer AI panel shows how far through the document Auto Transcript (and Script Supervisor) has reached</li>
+      <li><strong>Launcher Tkinter check</strong> &mdash; <code>start-filmpad.sh</code> now detects a missing Tkinter module before the source-run fallback and shows an actionable error dialog with the install command for the current distro</li>
+    </ul>
 
     <h2>What&rsquo;s new in v0.5</h2>
     <ul>

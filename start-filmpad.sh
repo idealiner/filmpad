@@ -155,7 +155,12 @@ if [[ -x ./dist/filmpad ]]; then
 fi
 
 if [[ -f ./filmpad.py ]] && command -v python3 >/dev/null 2>&1; then
-	run_source_fallback "$@"
+        if ! python3 -c "import tkinter" >/dev/null 2>&1; then
+                show_message \
+                        "FilmPad dependency missing" \
+                        "Python's Tkinter module is required but not installed.\n\nInstall command:\n$(python_install_hint)\n\nThen try launching again.\nRun doctor.sh for a full system check."
+                exit 1
+        fi
 	exit $?
 fi
 

@@ -207,7 +207,15 @@ class FilmPad:
         self._auto_transcript_btn: ttk.Button | None = None
         self._auto_transcript_block_num: int = 0
         self._at_start_line: int = 0
+        self._at_total_lines_snapshot: int = 0
         self._at_log_var = tk.StringVar(value="")
+        self._at_progress_var = tk.DoubleVar(value=0.0)
+        self._script_supervisor_running = False
+        self._script_supervisor_btn: ttk.Button | None = None
+        self._ss_scene_list: list[tuple[str, str]] = []
+        self._ss_scene_idx: int = 0
+        self._ss_log_var = tk.StringVar(value="")
+        self._ss_pending: dict | None = None
         self._auto_transcript_block_start: str | None = None
         self._auto_transcript_block_end: str | None = None
 
@@ -1099,10 +1107,44 @@ class FilmPad:
             font=("TkDefaultFont", 8),
             foreground="#888888",
         ).pack(anchor="w", pady=(4, 0))
+        self._at_progress_bar = ttk.Progressbar(
+            self._writer_ai_content,
+            variable=self._at_progress_var,
+            mode="determinate",
+            maximum=100,
+        )
+        self._at_progress_bar.pack(fill="x", pady=(4, 2))
         ttk.Checkbutton(
             self._writer_ai_content,
             text="Safe mode (smaller steps, slower, more stable)",
             variable=self._auto_transcript_safe_mode_var,
+        ).pack(anchor="w", pady=(4, 0))
+
+        ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 4))
+        ttk.Label(
+            self._writer_ai_content,
+            text="Script Supervisor",
+            font=("TkDefaultFont", 9, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(
+            self._writer_ai_content,
+            text="Second-pass review: finds continuity gaps, block artifacts and "
+                 "scene inconsistencies. Shows a comparison for each proposed fix.",
+            wraplength=240,
+            font=("TkDefaultFont", 8),
+        ).pack(anchor="w", pady=(2, 4))
+        self._script_supervisor_btn = ttk.Button(
+            self._writer_ai_content,
+            text="\u25b6 Script Supervisor",
+            command=self._toggle_script_supervisor,
+        )
+        self._script_supervisor_btn.pack(fill="x", pady=(0, 0))
+        ttk.Label(
+            self._writer_ai_content,
+            textvariable=self._ss_log_var,
+            wraplength=240,
+            font=("TkDefaultFont", 8),
+            foreground="#888888",
         ).pack(anchor="w", pady=(4, 0))
 
         ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 6))
@@ -1493,6 +1535,8 @@ class FilmPad:
         self.text.mark_gravity("_at_cursor", "right")
         self._auto_transcript_block_num = 0
         self._at_start_line = int(start_pos.split(".")[0])
+        self._at_total_lines_snapshot = int(self.text.index("end-1c").split(".")[0])
+        self._at_progress_var.set(0.0)
         self._at_log_var.set(f"Started: L{self._at_start_line} | Block: 0 | Pos: L{self._at_start_line} | Saved: —")
         self._auto_transcript_running = True
         if self._auto_transcript_btn:
@@ -1509,6 +1553,7 @@ class FilmPad:
         result = self._auto_transcript_get_block()
         if result is None:
             self._auto_transcript_running = False
+            self._at_progress_var.set(100.0)
             if self._auto_transcript_btn:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
             self.writer_ai_status_var.set("Auto transcript complete.")
@@ -1527,6 +1572,8 @@ class FilmPad:
             f"Started: L{self._at_start_line} | Block: {self._auto_transcript_block_num}"
             f" | Pos: L{cur_line} | Saved: {self._at_last_saved_label()}"
         )
+        _pct = min(99.0, cur_line / max(1, self._at_total_lines_snapshot) * 100)
+        self._at_progress_var.set(_pct)
         self.writer_ai_status_var.set(f"Auto transcript: processing {n} lines\u2026")
         # Reuse the transcribe prompt text
         prompt = (
@@ -1697,6 +1744,305 @@ class FilmPad:
             f"Started: L{self._at_start_line} | Block: {self._auto_transcript_block_num}"
             f" | Pos: L{cur_line} | Saved: {self._at_last_saved_label()}"
         )
+
+    # ── Script Supervisor ───────────────────────────────────────────────
+
+    def _toggle_script_supervisor(self) -> None:
+        if self._script_supervisor_running:
+            self._script_supervisor_running = False
+            if self._script_supervisor_btn:
+                self._script_supervisor_btn.configure(text="\u25b6 Script Supervisor")
+            self.writer_ai_status_var.set("Script Supervisor stopped.")
+            return
+        self._start_script_supervisor()
+
+    def _ss_get_scenes(self) -> list[tuple[str, str]]:
+        """Return (start_idx, end_idx) pairs for each scene, split by Scene Heading."""
+        scene_starts: list[str] = []
+        pos = "1.0"
+        while True:
+            rng = self.text.tag_nextrange("Scene Heading", pos)
+            if not rng:
+                break
+            heading_line = self.text.index(f"{rng[0]} linestart")
+            if not scene_starts or self.text.compare(heading_line, "!=", scene_starts[-1]):
+                scene_starts.append(heading_line)
+            pos = self.text.index(f"{rng[1]} + 1c")
+            if self.text.compare(pos, ">=", "end-1c"):
+                break
+        # Fallback: regex scan for untagged headings
+        if not scene_starts:
+            total = int(self.text.index("end-1c").split(".")[0])
+            for lineno in range(1, total + 1):
+                line = self.text.get(f"{lineno}.0", f"{lineno}.end").strip()
+                if line and self._AT_SLUG_RE.match(line):
+                    scene_starts.append(f"{lineno}.0")
+        scenes: list[tuple[str, str]] = []
+        for i, start in enumerate(scene_starts):
+            if i < len(scene_starts) - 1:
+                next_line = int(scene_starts[i + 1].split(".")[0])
+                end = self.text.index(f"{max(1, next_line - 1)}.end")
+            else:
+                end = self.text.index("end-1c")
+            if self.text.get(start, end).strip():
+                scenes.append((start, end))
+        if not scenes and self.text.get("1.0", "end-1c").strip():
+            scenes = [("1.0", self.text.index("end-1c"))]
+        return scenes
+
+    def _start_script_supervisor(self) -> None:
+        model = self.writer_ai_model_var.get().strip()
+        if not model:
+            messagebox.showwarning("Script Supervisor", "Select a model first.")
+            return
+        if not self._check_ollama_ready(model):
+            return
+        scenes = self._ss_get_scenes()
+        if not scenes:
+            messagebox.showinfo("Script Supervisor", "No scenes found to review.")
+            return
+        self._ss_scene_list = scenes
+        self._ss_scene_idx = 0
+        self._ss_pending = None
+        self._script_supervisor_running = True
+        self._at_progress_var.set(0.0)
+        if self._script_supervisor_btn:
+            self._script_supervisor_btn.configure(text="\u23f9 Stop Supervisor")
+        self._ss_log_var.set(f"0 / {len(scenes)} scenes")
+        self.writer_ai_status_var.set("Script Supervisor starting\u2026")
+        self._ss_step()
+
+    def _ss_step(self) -> None:
+        if not self._script_supervisor_running:
+            return
+        if self.writer_ai_generating:
+            self.root.after(600, self._ss_step)
+            return
+        idx = self._ss_scene_idx
+        total = len(self._ss_scene_list)
+        if idx >= total:
+            self._script_supervisor_running = False
+            self._at_progress_var.set(100.0)
+            if self._script_supervisor_btn:
+                self._script_supervisor_btn.configure(text="\u25b6 Script Supervisor")
+            self._ss_log_var.set(f"Complete \u2014 {total} scene{'s' if total != 1 else ''} reviewed.")
+            self.writer_ai_status_var.set("Script Supervisor complete.")
+            return
+        start, end = self._ss_scene_list[idx]
+        scene_text = self.text.get(start, end)
+        # Context windows: last ~400 chars of prev scene, first ~400 of next
+        prev_ctx = ""
+        if idx > 0:
+            p_start, p_end = self._ss_scene_list[idx - 1]
+            prev_full = self.text.get(p_start, p_end)
+            prev_ctx = prev_full[-400:].strip()
+        next_ctx = ""
+        if idx < total - 1:
+            n_start, n_end = self._ss_scene_list[idx + 1]
+            next_full = self.text.get(n_start, n_end)
+            next_ctx = next_full[:400].strip()
+        knowledge = self._read_project_knowledge()
+        parts = [
+            "You are a professional script supervisor reviewing a screenplay.\n"
+            "It was auto-transcribed in blocks and may have artifacts at block boundaries.\n"
+        ]
+        if knowledge:
+            parts.append(f"KNOWLEDGE BASE (names, locations \u2014 reference only, do NOT add content from here):\n{knowledge}\n")
+        if prev_ctx:
+            parts.append(f"PREVIOUS SCENE \u2014 ENDING (context only, do NOT include in output):\n{prev_ctx}\n")
+        parts.append(f"SCENE TO REVIEW:\n{scene_text}\n")
+        if next_ctx:
+            parts.append(f"NEXT SCENE \u2014 OPENING (context only, do NOT include in output):\n{next_ctx}\n")
+        parts.append(
+            "Fix ONLY these issues in the SCENE TO REVIEW:\n"
+            "1. Text artifacts from block boundaries (orphaned words, duplicate lines, cut-off sentences)\n"
+            "2. Malformed scene headings (must be INT./EXT. ALL CAPS on its own line)\n"
+            "3. Character name spelling inconsistencies (use knowledge base as ground truth)\n"
+            "4. Broken dialogue attribution (missing or wrong character name)\n"
+            "5. Transitions cut off at a block boundary\n\n"
+            "Do NOT rewrite, restructure, add content, or change meaning.\n"
+            "If the scene has no issues, return it unchanged.\n"
+            "Output ONLY the corrected scene text, nothing else."
+        )
+        prompt = "\n".join(parts)
+        model = self.writer_ai_model_var.get().strip()
+        self._ss_log_var.set(f"Scene {idx + 1} / {total}")
+        _pct = min(99.0, idx / max(1, total) * 100)
+        self._at_progress_var.set(_pct)
+        self.writer_ai_generating = True
+        self._show_writer_ai_progress_overlay(
+            f"Script Supervisor \u2014 scene {idx + 1}/{total}", model
+        )
+        threading.Thread(
+            target=self._ss_thread,
+            args=(model, prompt, scene_text, start, end, idx, total),
+            daemon=True,
+        ).start()
+
+    def _ss_thread(
+        self, model: str, prompt: str,
+        original: str, start: str, end: str, scene_num: int, total: int,
+    ) -> None:
+        import os
+        try:
+            ollama = self._find_ollama()
+            if not ollama:
+                self.root.after(0, self._ss_finish, "", 127, original, start, end, scene_num, total)
+                return
+            env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
+            proc = subprocess.Popen(
+                [ollama, "run", model],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env=env,
+            )
+            self._writer_ai_process = proc
+            try:
+                out, _err = proc.communicate(input=prompt.encode("utf-8"), timeout=180)
+                output = out.decode("utf-8", errors="replace")
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                self.root.after(0, self._ss_finish, "", -2, original, start, end, scene_num, total)
+                return
+            self.root.after(0, self._ss_finish, output, proc.returncode, original, start, end, scene_num, total)
+        except Exception:
+            self.root.after(0, self._ss_finish, "", 1, original, start, end, scene_num, total)
+
+    def _ss_finish(
+        self, output: str, returncode: int,
+        original: str, start: str, end: str, scene_num: int, total: int,
+    ) -> None:
+        self._close_progress_overlay()
+        self.writer_ai_generating = False
+        self._writer_ai_process = None
+        if not self._script_supervisor_running:
+            return
+        if returncode != 0 or not output.strip():
+            self._ss_scene_idx += 1
+            self.root.after(400, self._ss_step)
+            return
+        import difflib
+        proposed = self._sanitize_local_ai_output(output).strip()
+        ratio = difflib.SequenceMatcher(None, original.strip(), proposed).ratio()
+        if ratio > 0.97:
+            # No meaningful change — move on
+            self._ss_scene_idx += 1
+            self.root.after(400, self._ss_step)
+            return
+        self._ss_pending = {
+            "original": original.strip(),
+            "proposed": proposed,
+            "start": start, "end": end,
+            "scene_num": scene_num, "total": total,
+        }
+        self._show_ss_comparison()
+
+    def _show_ss_comparison(self) -> None:
+        item = self._ss_pending
+        if not item:
+            return
+        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        win = tk.Toplevel(self.root)
+        win.title(f"Script Supervisor \u2014 Scene {item['scene_num'] + 1} of {item['total']}")
+        win.transient(self.root)
+        self.root.update_idletasks()
+        w, h = 1100, 740
+        rx = max(0, self.root.winfo_rootx() + self.root.winfo_width() // 2 - w // 2)
+        ry = max(0, self.root.winfo_rooty() + self.root.winfo_height() // 2 - h // 2)
+        win.geometry(f"{w}x{h}+{rx}+{ry}")
+        win.minsize(700, 500)
+        win.configure(bg=c["ttk_bg"])
+
+        header = tk.Frame(win, bg=c["ttk_bg"])
+        header.pack(side="top", fill="x", padx=10, pady=(8, 0))
+        tk.Label(header,
+                 text=f"Scene {item['scene_num'] + 1} of {item['total']}  \u2014  Original (read-only)",
+                 font=("TkDefaultFont", 10, "bold"),
+                 bg=c["ttk_bg"], fg=c["ttk_fg"]).pack(side="left")
+        tk.Label(header, text="Proposed by Script Supervisor  (editable)",
+                 font=("TkDefaultFont", 10, "bold"),
+                 bg=c["ttk_bg"], fg=c["ttk_fg"]).pack(side="right", padx=(0, 10))
+
+        btn_bar = tk.Frame(win, bg=c["ttk_bg"])
+        btn_bar.pack(side="bottom", fill="x", padx=10, pady=8)
+        tk.Label(btn_bar,
+                 text="Edit the proposed text freely. Apply & Next to accept, Skip to keep original.",
+                 bg=c["ttk_bg"], fg=c["status_fg"]).pack(side="left")
+
+        text_opts = dict(
+            wrap="word", font=self.screenplay_font, padx=10, pady=10,
+            background=c["text_bg"], foreground=c["text_fg"],
+            insertbackground=c["insert"],
+            selectbackground=c["sel_bg"], selectforeground=c["sel_fg"],
+            inactiveselectbackground=c["sel_bg"],
+        )
+
+        pane = tk.PanedWindow(win, orient="horizontal",
+                              bg=c["ttk_bg"], sashrelief="flat", sashwidth=6)
+        pane.pack(side="top", fill="both", expand=True, padx=10, pady=(4, 0))
+
+        orig_frame = tk.Frame(pane, bg=c["ttk_bg"])
+        orig_text = tk.Text(orig_frame, state="normal", **text_opts)
+        orig_scroll = tk.Scrollbar(orig_frame, command=orig_text.yview)
+        orig_text.configure(yscrollcommand=orig_scroll.set)
+        orig_scroll.pack(side="right", fill="y")
+        orig_text.pack(fill="both", expand=True)
+        orig_text.insert("1.0", item["original"])
+        orig_text.configure(state="disabled")
+        pane.add(orig_frame, stretch="always")
+
+        prop_frame = tk.Frame(pane, bg=c["ttk_bg"])
+        prop_text = tk.Text(prop_frame, state="normal", **text_opts)
+        prop_scroll = tk.Scrollbar(prop_frame, command=prop_text.yview)
+        prop_text.configure(yscrollcommand=prop_scroll.set)
+        prop_scroll.pack(side="right", fill="y")
+        prop_text.pack(fill="both", expand=True)
+        prop_text.insert("1.0", item["proposed"])
+        pane.add(prop_frame, stretch="always")
+
+        def _apply_and_next() -> None:
+            new_text = prop_text.get("1.0", "end-1c")
+            s, e = item["start"], item["end"]
+            try:
+                self.text.delete(s, e)
+                self.text.insert(s, new_text)
+                ins_end = self.text.index(f"{s} + {len(new_text)}c")
+                self._auto_tag_screenplay_block(self.text, s, ins_end)
+            except tk.TclError:
+                pass
+            win.destroy()
+            self._ss_pending = None
+            # Rebuild scene list to account for text changes, then advance
+            self._ss_scene_list = self._ss_get_scenes()
+            self._ss_scene_idx = item["scene_num"] + 1
+            self.root.after(300, self._ss_step)
+
+        def _skip_and_next() -> None:
+            win.destroy()
+            self._ss_pending = None
+            self._ss_scene_idx = item["scene_num"] + 1
+            self.root.after(300, self._ss_step)
+
+        def _stop() -> None:
+            win.destroy()
+            self._ss_pending = None
+            self._script_supervisor_running = False
+            if self._script_supervisor_btn:
+                self._script_supervisor_btn.configure(text="\u25b6 Script Supervisor")
+            self.writer_ai_status_var.set("Script Supervisor stopped.")
+
+        win.protocol("WM_DELETE_WINDOW", _skip_and_next)
+        tk.Button(btn_bar, text="Stop", width=8, command=_stop,
+                  bg=c["entry_bg"], fg=c["ttk_fg"], relief="flat",
+                  activebackground=c["sel_bg"]).pack(side="right", padx=(6, 0))
+        tk.Button(btn_bar, text="Skip Scene", width=12, command=_skip_and_next,
+                  bg=c["entry_bg"], fg=c["ttk_fg"], relief="flat",
+                  activebackground=c["sel_bg"]).pack(side="right", padx=(6, 0))
+        tk.Button(btn_bar, text="Apply & Next", width=14, command=_apply_and_next,
+                  bg="#0e639c", fg="white", relief="flat",
+                  activebackground="#1177bb").pack(side="right")
+
+    # ── Writer AI progress overlay ───────────────────────────────────────
 
     def _show_writer_ai_progress_overlay(self, detail: str, model: str) -> None:
         self._progress_win = tk.Toplevel(self.root)
