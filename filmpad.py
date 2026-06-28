@@ -1848,7 +1848,11 @@ class FilmPad:
         if not model:
             messagebox.showwarning("Script Supervisor", "Select a model first.")
             return
-        if not self._check_ollama_ready(model):
+        if not shutil.which("ollama"):
+            messagebox.showerror(
+                "Script Supervisor",
+                "Ollama is not installed or not on PATH.\n\nInstall it at https://ollama.com/download\nthen run doctor.sh to verify.",
+            )
             return
         scenes = self._ss_get_scenes()
         if not scenes:
@@ -1938,10 +1942,7 @@ class FilmPad:
     ) -> None:
         import os
         try:
-            ollama = self._find_ollama()
-            if not ollama:
-                self.root.after(0, self._ss_finish, "", 127, original, start, end, scene_num, total)
-                return
+            ollama = shutil.which("ollama") or "ollama"
             env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
             proc = subprocess.Popen(
                 [ollama, "run", model],
