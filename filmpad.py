@@ -1082,7 +1082,20 @@ class FilmPad:
                 scrollregion=self._writer_ai_panel_canvas.bbox("all")
             ),
         )
-        # Starts collapsed — container is not packed yet
+        # Start expanded — pack the container and schedule initial sash position
+        self._writer_ai_panel_container.pack(side="top", fill="both", expand=True)
+        self._writer_ai_toggle_btn.configure(text="\u25c4")
+
+        def _set_initial_sash() -> None:
+            total = self.editor_frame.winfo_width()
+            if total < 100:
+                self.root.after(50, _set_initial_sash)
+                return
+            try:
+                self.editor_frame.sash_place(0, max(300, total - total // 3), 0)
+            except tk.TclError:
+                pass
+        self.root.after(150, _set_initial_sash)
 
         ttk.Label(
             self._writer_ai_content, text="Writer AI", font=("TkDefaultFont", 10, "bold")
@@ -1231,14 +1244,19 @@ class FilmPad:
         self._writer_ai_panel_canvas.bind("<MouseWheel>", _wa_mw)
 
         # Dynamic wraplength: update description labels when panel is resized
+        _refresh_lock = [False]
         def _refresh_label_wraps(event=None) -> None:
+            if _refresh_lock[0]:
+                return
             w = self._writer_ai_content.winfo_width()
             if w < 50:
                 return
             new_wrap = max(80, w - 16)
+            _refresh_lock[0] = True
             for child in self._writer_ai_content.winfo_children():
                 if isinstance(child, ttk.Label):
                     child.configure(wraplength=new_wrap)
+            _refresh_lock[0] = False
         self._writer_ai_content.bind("<Configure>", _refresh_label_wraps, add="+")
 
     def _toggle_writer_ai_sidebar(self) -> None:
