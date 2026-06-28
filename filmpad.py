@@ -1221,17 +1221,19 @@ class FilmPad:
             self.writer_ai_project_folder_var.set(folder)
 
     def _load_custom_prompt(self, filename: str, fallback: str) -> str:
-        """Return text from <project_folder>/<filename> if it exists, else fallback."""
+        """Return text from <project_folder>/templates/<filename>, then
+        <project_folder>/<filename>, then fallback."""
         folder = self.writer_ai_project_folder_var.get().strip()
         if folder:
-            path = pathlib.Path(folder) / filename
-            if path.is_file():
-                try:
-                    text = path.read_text(encoding="utf-8").strip()
-                    if text:
-                        return text
-                except OSError:
-                    pass
+            base = pathlib.Path(folder)
+            for candidate in (base / "templates" / filename, base / filename):
+                if candidate.is_file():
+                    try:
+                        text = candidate.read_text(encoding="utf-8").strip()
+                        if text:
+                            return text
+                    except OSError:
+                        pass
         return fallback
 
     def _read_project_knowledge(self) -> str:
