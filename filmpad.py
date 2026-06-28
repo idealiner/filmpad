@@ -2030,8 +2030,8 @@ class FilmPad:
         import difflib
         proposed = self._sanitize_local_ai_output(output).strip()
         ratio = difflib.SequenceMatcher(None, original.strip(), proposed).ratio()
-        if ratio > 0.97:
-            # No meaningful change — move on
+        if ratio > 0.60:
+            # Less than 40% different — move on automatically
             self._ss_scene_idx += 1
             self.root.after(400, self._ss_step)
             return
@@ -2106,7 +2106,36 @@ class FilmPad:
         prop_text.insert("1.0", item["proposed"])
         pane.add(prop_frame, stretch="always")
 
+        # --- 5-minute inactivity auto-accept timer ---
+        _AUTO_ACCEPT_SECS = 300
+        _remaining = [_AUTO_ACCEPT_SECS]
+        _timer_job = [None]
+        _countdown_var = tk.StringVar()
+
+        def _cancel_timer() -> None:
+            if _timer_job[0] is not None:
+                try:
+                    win.after_cancel(_timer_job[0])
+                except Exception:
+                    pass
+                _timer_job[0] = None
+
+        def _reset_timer(event=None) -> None:
+            _remaining[0] = _AUTO_ACCEPT_SECS
+
+        def _tick() -> None:
+            if not win.winfo_exists():
+                return
+            if _remaining[0] <= 0:
+                _apply_and_next()
+                return
+            m, s = divmod(_remaining[0], 60)
+            _countdown_var.set(f"Auto-accepting in {m}:{s:02d}  —  interact to reset")
+            _remaining[0] -= 1
+            _timer_job[0] = win.after(1000, _tick)
+
         def _apply_and_next() -> None:
+            _cancel_timer()
             new_text = prop_text.get("1.0", "end-1c")
             s, e = item["start"], item["end"]
             try:
@@ -2124,12 +2153,14 @@ class FilmPad:
             self.root.after(300, self._ss_step)
 
         def _skip_and_next() -> None:
+            _cancel_timer()
             win.destroy()
             self._ss_pending = None
             self._ss_scene_idx = item["scene_num"] + 1
             self.root.after(300, self._ss_step)
 
         def _stop() -> None:
+            _cancel_timer()
             win.destroy()
             self._ss_pending = None
             self._script_supervisor_running = False
@@ -2137,7 +2168,19 @@ class FilmPad:
                 self._script_supervisor_btn.configure(text="\u25b6 Script Supervisor")
             self.writer_ai_status_var.set("Script Supervisor stopped.")
 
+        # Bind any interaction in the window to reset the inactivity timer
+        for _w in (win, prop_text, orig_text):
+            _w.bind("<Key>", _reset_timer, add="+")
+            _w.bind("<Button>", _reset_timer, add="+")
+            _w.bind("<Motion>", _reset_timer, add="+")
+
         win.protocol("WM_DELETE_WINDOW", _skip_and_next)
+
+        # Countdown label above the buttons
+        tk.Label(btn_bar, textvariable=_countdown_var,
+                 bg=c["ttk_bg"], fg="#aaaaaa",
+                 font=("TkDefaultFont", 8)).pack(side="left", padx=(8, 0))
+
         tk.Button(btn_bar, text="Stop", width=8, command=_stop,
                   bg=c["entry_bg"], fg=c["ttk_fg"], relief="flat",
                   activebackground=c["sel_bg"]).pack(side="right", padx=(6, 0))
@@ -2147,6 +2190,8 @@ class FilmPad:
         tk.Button(btn_bar, text="Apply & Next", width=14, command=_apply_and_next,
                   bg="#0e639c", fg="white", relief="flat",
                   activebackground="#1177bb").pack(side="right")
+
+        _tick()  # start the countdown
 
     # ── Writer AI progress overlay ───────────────────────────────────────
 
