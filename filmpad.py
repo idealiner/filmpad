@@ -1876,8 +1876,17 @@ class FilmPad:
 
     def _start_script_supervisor(self) -> None:
         if self.writer_ai_generating:
-            self.writer_ai_status_var.set("Wait for current generation to finish.")
-            return
+            # Only block if something is actually running; otherwise reset stale flag
+            at_active = self._auto_transcript_running
+            wa_active = (
+                self._writer_ai_process is not None
+                and self._writer_ai_process.poll() is None
+            )
+            if at_active or wa_active:
+                self.writer_ai_status_var.set("Wait for current generation to finish.")
+                return
+            # Stale flag — reset and continue
+            self.writer_ai_generating = False
         model = self.writer_ai_model_var.get().strip()
         if not model:
             messagebox.showwarning("Script Supervisor", "Select a model first.")
