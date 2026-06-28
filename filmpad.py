@@ -1220,6 +1220,20 @@ class FilmPad:
         if folder:
             self.writer_ai_project_folder_var.set(folder)
 
+    def _load_custom_prompt(self, filename: str, fallback: str) -> str:
+        """Return text from <project_folder>/<filename> if it exists, else fallback."""
+        folder = self.writer_ai_project_folder_var.get().strip()
+        if folder:
+            path = pathlib.Path(folder) / filename
+            if path.is_file():
+                try:
+                    text = path.read_text(encoding="utf-8").strip()
+                    if text:
+                        return text
+                except OSError:
+                    pass
+        return fallback
+
     def _read_project_knowledge(self) -> str:
         folder = self.writer_ai_project_folder_var.get().strip()
         if not folder or not Path(folder).is_dir():
@@ -1495,6 +1509,36 @@ class FilmPad:
     _AT_NEXT_STEP_DELAY_MS = 300
     _AT_SAFE_NEXT_STEP_DELAY_MS = 1200
 
+    _AT_PROMPT_DEFAULT = (
+        "Reformat the following text as a properly laid-out screenplay.\n\n"
+        "STRICT RULES:\n"
+        "1. Preserve every word verbatim: action lines, descriptions, situational "
+        "notes, transitions, and all dialogue \u2014 do NOT cut, summarise, or paraphrase "
+        "anything, not even a single sentence.\n"
+        "2. Do NOT add anything not in the source: no notes, no [bracketed placeholders], "
+        "no \u2018Dialogue not provided\u2019, no confidence scores, no commentary, "
+        "no preamble \u2014 nothing.\n"
+        "3. Scene headings (INT./EXT. or bare location lines): ALL CAPS, own line.\n"
+        "4. Transitions (CUT TO, INTERCUT, FADE TO, etc.): ALL CAPS, own line, copied exactly as written.\n"
+        "5. When a character speaks: put the character name in ALL CAPS on its own line, "
+        "then their words on the next line, copied letter-for-letter.\n"
+        "6. Everything else becomes an action line \u2014 copy it word for word.\n"
+        "7. Do NOT merge, split, or reorder scenes.\n\n"
+        "Output the reformatted screenplay and nothing else."
+    )
+
+    _SS_INSTRUCTIONS_DEFAULT = (
+        "Fix ONLY these issues in the SCENE TO REVIEW:\n"
+        "1. Text artifacts from block boundaries (orphaned words, duplicate lines, cut-off sentences)\n"
+        "2. Malformed scene headings (must be INT./EXT. ALL CAPS on its own line)\n"
+        "3. Character name spelling inconsistencies (use knowledge base as ground truth)\n"
+        "4. Broken dialogue attribution (missing or wrong character name)\n"
+        "5. Transitions cut off at a block boundary\n\n"
+        "Do NOT rewrite, restructure, add content, or change meaning.\n"
+        "If the scene has no issues, return it unchanged.\n"
+        "Output ONLY the corrected scene text, nothing else."
+    )
+
     def _auto_transcript_environment_risks(self) -> list[str]:
         risks: list[str] = []
         try:
@@ -1628,23 +1672,8 @@ class FilmPad:
         _pct = min(99.0, cur_line / max(1, self._at_total_lines_snapshot) * 100)
         self._at_progress_var.set(_pct)
         self.writer_ai_status_var.set(f"Auto transcript: processing {n} lines\u2026")
-        # Reuse the transcribe prompt text
-        prompt = (
-            "Reformat the following text as a properly laid-out screenplay.\n\n"
-            "STRICT RULES:\n"
-            "1. Preserve every word verbatim: action lines, descriptions, situational "
-            "notes, transitions, and all dialogue \u2014 do NOT cut, summarise, or paraphrase "
-            "anything, not even a single sentence.\n"
-            "2. Do NOT add anything not in the source: no notes, no [bracketed placeholders], "
-            "no \u2018Dialogue not provided\u2019, no confidence scores, no commentary, no preamble \u2014 nothing.\n"
-            "3. Scene headings (INT./EXT. or bare location lines): ALL CAPS, own line.\n"
-            "4. Transitions (CUT TO, INTERCUT, FADE TO, etc.): ALL CAPS, own line, copied exactly as written.\n"
-            "5. When a character speaks: put the character name in ALL CAPS on its own line, "
-            "then their words on the next line, copied letter-for-letter.\n"
-            "6. Everything else becomes an action line \u2014 copy it word for word.\n"
-            "7. Do NOT merge, split, or reorder scenes.\n\n"
-            "Output the reformatted screenplay and nothing else."
-        )
+        # Load prompt from project folder (auto_transcript_prompt.txt) or use built-in default
+        prompt = self._load_custom_prompt("auto_transcript_prompt.txt", self._AT_PROMPT_DEFAULT)
         project_context = self._read_project_knowledge()
         full_prompt = self._build_writer_ai_prompt(block_text, prompt, project_context)
         model = self.writer_ai_model_var.get().strip()
@@ -1910,17 +1939,7 @@ class FilmPad:
         parts.append(f"SCENE TO REVIEW:\n{scene_text}\n")
         if next_ctx:
             parts.append(f"NEXT SCENE \u2014 OPENING (context only, do NOT include in output):\n{next_ctx}\n")
-        parts.append(
-            "Fix ONLY these issues in the SCENE TO REVIEW:\n"
-            "1. Text artifacts from block boundaries (orphaned words, duplicate lines, cut-off sentences)\n"
-            "2. Malformed scene headings (must be INT./EXT. ALL CAPS on its own line)\n"
-            "3. Character name spelling inconsistencies (use knowledge base as ground truth)\n"
-            "4. Broken dialogue attribution (missing or wrong character name)\n"
-            "5. Transitions cut off at a block boundary\n\n"
-            "Do NOT rewrite, restructure, add content, or change meaning.\n"
-            "If the scene has no issues, return it unchanged.\n"
-            "Output ONLY the corrected scene text, nothing else."
-        )
+        parts.append(self._load_custom_prompt("ss_prompt.txt", self._SS_INSTRUCTIONS_DEFAULT))
         prompt = "\n".join(parts)
         model = self.writer_ai_model_var.get().strip()
         self._ss_log_var.set(f"Scene {idx + 1} / {total}")

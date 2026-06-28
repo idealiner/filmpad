@@ -1,0 +1,75 @@
+STYLE REFERENCE
+===============
+This file shows the exact output format required. Use it as a formatting
+guide only — do NOT incorporate its content into the screenplay.
+
+-------------------------------------------------------------------------------
+
+INT. DETECTIVE'S OFFICE - NIGHT
+
+Rain against the window. SARAH COLE, 40s, sits across from a desk buried in
+files. Her coat is still wet.
+
+The door opens. DETECTIVE RAY MURTAGH, 50s, enters carrying two paper cups.
+
+MURTAGH
+Sorry about the wait.
+
+He sets a cup in front of her without asking.
+
+SARAH
+You said on the phone you found something.
+
+MURTAGH
+We found the car. Torched. Out past the reservoir.
+
+Sarah looks down at her hands. A long beat.
+
+SARAH
+Anyone inside?
+
+MURTAGH
+No. Just the car.
+
+CUT TO:
+
+EXT. RESERVOIR ROAD - NIGHT
+
+Headlights. A police tape line flaps in the wind. Beyond it, the charred
+shell of a sedan.
+
+Murtagh and Sarah stand at the tape. A FORENSIC TECH crouches near the
+rear wheel arch, photographing something.
+
+MURTAGH
+Paint transfer. Other vehicle hit it before it burned.
+
+SARAH
+What colour?
+
+MURTAGH
+White. Or light grey. Lab'll know more by morning.
+
+SARAH
+(quietly)
+He was there.
+
+Murtagh doesn't answer. He already knows.
+
+FADE TO:
+
+INT. SARAH'S APARTMENT - DAWN
+
+The room is dark. Sarah sits on the floor, back against the couch, the
+paper cup still in her hand, cold now. She hasn't slept.
+
+Her phone buzzes. She looks at the screen.
+
+INSERT — PHONE SCREEN: a single text message. "Don't look for it."
+
+BACK TO SCENE
+
+Sarah puts the phone face-down on the floor.
+
+-------------------------------------------------------------------------------
+END OF STYLE REFERENCE

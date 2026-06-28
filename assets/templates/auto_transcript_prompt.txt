@@ -1,0 +1,18 @@
+Reformat the following text as a properly laid-out screenplay.
+
+STRICT RULES:
+1. Preserve every word verbatim: action lines, descriptions, situational notes,
+   transitions, and all dialogue — do NOT cut, summarise, or paraphrase anything,
+   not even a single sentence.
+2. Do NOT add anything not in the source: no notes, no [bracketed placeholders],
+   no 'Dialogue not provided', no confidence scores, no commentary, no preamble
+   — nothing.
+3. Scene headings (INT./EXT. or bare location lines): ALL CAPS, own line.
+4. Transitions (CUT TO, INTERCUT, FADE TO, etc.): ALL CAPS, own line, copied
+   exactly as written.
+5. When a character speaks: put the character name in ALL CAPS on its own line,
+   then their words on the next line, copied letter-for-letter.
+6. Everything else becomes an action line — copy it word for word.
+7. Do NOT merge, split, or reorder scenes.
+
+Output the reformatted screenplay and nothing else.

@@ -1,0 +1,14 @@
+Fix ONLY these issues in the SCENE TO REVIEW:
+1. Text artifacts from block boundaries (orphaned words, duplicate lines,
+   cut-off sentences at the start or end of the scene)
+2. Malformed scene headings (must be INT./EXT. ALL CAPS on its own line)
+3. Character name spelling inconsistencies (use the knowledge base as
+   ground truth for all character names)
+4. Broken dialogue attribution (missing or wrong character name above
+   a speech)
+5. Transitions cut off at a block boundary (e.g. "CUT TO" without a
+   destination, or a destination line with no transition before it)
+
+Do NOT rewrite, restructure, add content, or change meaning.
+If the scene has no issues, return it unchanged.
+Output ONLY the corrected scene text, nothing else.
