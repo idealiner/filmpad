@@ -170,21 +170,26 @@ class FilmPad:
         self.main_notebook.add(self.local_ai_tab, text="Local AI")
         self.main_notebook.bind("<<NotebookTabChanged>>", self._on_notebook_tab_changed)
 
-        self.editor_frame = ttk.Frame(self.editor_tab)
+        self.editor_frame = tk.PanedWindow(
+            self.editor_tab, orient="horizontal",
+            sashwidth=5, sashrelief="flat", bd=0,
+        )
         self.editor_frame.pack(fill="both", expand=True)
+        self._editor_text_frame = ttk.Frame(self.editor_frame)
+        self.editor_frame.add(self._editor_text_frame, stretch="always", minsize=300)
 
         self.text = tk.Text(
-            self.editor_frame,
+            self._editor_text_frame,
             wrap="word",
             undo=True,
             font=self.screenplay_font,
             padx=36,
             pady=24,
         )
-        self.scroll = tk.Scrollbar(self.editor_frame, command=self.text.yview)
+        self.scroll = tk.Scrollbar(self._editor_text_frame, command=self.text.yview)
         _c0 = DARK_COLORS  # dark is default at startup
         self.line_gutter = tk.Canvas(
-            self.editor_frame, width=52,
+            self._editor_text_frame, width=52,
             highlightthickness=0, background=_c0["gutter_bg"],
             cursor="arrow", takefocus=False,
         )
@@ -391,6 +396,8 @@ class FilmPad:
         self.root.configure(bg=c["ttk_bg"],
             highlightbackground=c["ttk_bg"], highlightcolor=c["ttk_bg"],
             highlightthickness=0)
+        if hasattr(self, "editor_frame"):
+            self.editor_frame.configure(background=c["ttk_bg"])
         self.toolbar.configure(style="TFrame")
 
         # --- tk.Text widgets ---
@@ -1018,7 +1025,20 @@ class FilmPad:
 
     def _build_writer_ai_panel(self) -> None:
         outer = ttk.Frame(self.editor_frame)
-        outer.pack(side="right", fill="y")
+        self.editor_frame.add(outer, stretch="never", minsize=32)
+
+        def _enforce_max_wa_width(event=None) -> None:
+            total = self.editor_frame.winfo_width()
+            if total < 100:
+                return
+            max_wa = max(32, total // 3)
+            try:
+                sx = self.editor_frame.sash_coord(0)[0]
+                if total - sx > max_wa:
+                    self.editor_frame.sash_place(0, total - max_wa, 0)
+            except tk.TclError:
+                pass
+        self.editor_frame.bind("<Configure>", _enforce_max_wa_width)
 
         self._writer_ai_toggle_btn = ttk.Button(
             outer, text="\u25b6", width=3, command=self._toggle_writer_ai_sidebar
@@ -1206,14 +1226,24 @@ class FilmPad:
         self._writer_ai_panel_canvas.bind("<MouseWheel>", _wa_mw)
 
     def _toggle_writer_ai_sidebar(self) -> None:
+        total = self.editor_frame.winfo_width()
         if self._writer_ai_panel_container.winfo_ismapped():
             self._writer_ai_panel_container.pack_forget()
             self._writer_ai_toggle_btn.configure(text="\u25b6")
+            try:
+                self.editor_frame.sash_place(0, total - 36, 0)
+            except tk.TclError:
+                pass
         else:
             self._writer_ai_panel_container.pack(
                 side="top", fill="both", expand=True
             )
             self._writer_ai_toggle_btn.configure(text="\u25c4")
+            default_wa = min(300, max(200, total // 4))
+            try:
+                self.editor_frame.sash_place(0, total - default_wa, 0)
+            except tk.TclError:
+                pass
 
     def _pick_writer_ai_project_folder(self) -> None:
         folder = filedialog.askdirectory(title="Select Project Knowledge Folder")
