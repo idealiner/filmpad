@@ -420,6 +420,8 @@ class FilmPad:
         if hasattr(self, "line_gutter") and self.line_gutter:
             self.line_gutter.configure(background=c["gutter_bg"])
             self._schedule_line_number_update()
+        if hasattr(self, "_writer_ai_panel_canvas"):
+            self._writer_ai_panel_canvas.configure(background=c["ttk_bg"])
 
         # --- classic tk.Scrollbar widgets (don't respond to ttk style) ---
         sb_opts = dict(
@@ -1023,8 +1025,39 @@ class FilmPad:
         )
         self._writer_ai_toggle_btn.pack(side="top", padx=(4, 4), pady=4)
 
-        self._writer_ai_content = ttk.Frame(outer, padding=(6, 2, 10, 10))
-        # Starts collapsed — content is not packed yet
+        # Scrollable container for panel content
+        self._writer_ai_panel_container = ttk.Frame(outer)
+        _wa_sb = ttk.Scrollbar(
+            self._writer_ai_panel_container, orient="vertical"
+        )
+        _wa_sb.pack(side="right", fill="y")
+        self._writer_ai_panel_canvas = tk.Canvas(
+            self._writer_ai_panel_container,
+            highlightthickness=0, width=270,
+            background=DARK_COLORS["ttk_bg"],
+            yscrollcommand=_wa_sb.set,
+        )
+        self._writer_ai_panel_canvas.pack(side="left", fill="both", expand=True)
+        _wa_sb.configure(command=self._writer_ai_panel_canvas.yview)
+        self._writer_ai_content = ttk.Frame(
+            self._writer_ai_panel_canvas, padding=(6, 2, 10, 10)
+        )
+        _wa_cw = self._writer_ai_panel_canvas.create_window(
+            (0, 0), window=self._writer_ai_content, anchor="nw"
+        )
+        self._writer_ai_panel_canvas.bind(
+            "<Configure>",
+            lambda e, cw=_wa_cw: self._writer_ai_panel_canvas.itemconfigure(
+                cw, width=e.width
+            ),
+        )
+        self._writer_ai_content.bind(
+            "<Configure>",
+            lambda e: self._writer_ai_panel_canvas.configure(
+                scrollregion=self._writer_ai_panel_canvas.bbox("all")
+            ),
+        )
+        # Starts collapsed — container is not packed yet
 
         ttk.Label(
             self._writer_ai_content, text="Writer AI", font=("TkDefaultFont", 10, "bold")
@@ -1154,12 +1187,32 @@ class FilmPad:
             wraplength=240,
         ).pack(anchor="w")
 
+        # Bind mouse-wheel scrolling for every widget in the panel
+        def _wa_mw(e: tk.Event) -> None:
+            self._writer_ai_panel_canvas.yview_scroll(
+                -1 if (e.num == 4 or getattr(e, "delta", 0) > 0) else 1, "units"
+            )
+
+        def _bind_mw(w: tk.BaseWidget) -> None:
+            w.bind("<Button-4>", _wa_mw, "+")
+            w.bind("<Button-5>", _wa_mw, "+")
+            w.bind("<MouseWheel>", _wa_mw, "+")
+            for child in w.winfo_children():
+                _bind_mw(child)
+
+        _bind_mw(self._writer_ai_content)
+        self._writer_ai_panel_canvas.bind("<Button-4>", _wa_mw)
+        self._writer_ai_panel_canvas.bind("<Button-5>", _wa_mw)
+        self._writer_ai_panel_canvas.bind("<MouseWheel>", _wa_mw)
+
     def _toggle_writer_ai_sidebar(self) -> None:
-        if self._writer_ai_content.winfo_ismapped():
-            self._writer_ai_content.pack_forget()
+        if self._writer_ai_panel_container.winfo_ismapped():
+            self._writer_ai_panel_container.pack_forget()
             self._writer_ai_toggle_btn.configure(text="\u25b6")
         else:
-            self._writer_ai_content.pack(side="top", fill="y", expand=True)
+            self._writer_ai_panel_container.pack(
+                side="top", fill="both", expand=True
+            )
             self._writer_ai_toggle_btn.configure(text="\u25c4")
 
     def _pick_writer_ai_project_folder(self) -> None:
