@@ -2030,8 +2030,8 @@ class FilmPad:
         import difflib
         proposed = self._sanitize_local_ai_output(output).strip()
         ratio = difflib.SequenceMatcher(None, original.strip(), proposed).ratio()
-        if ratio > 0.60:
-            # Less than 40% different — move on automatically
+        if ratio > 0.89:
+            # Less than 11% different — move on automatically
             self._ss_scene_idx += 1
             self.root.after(400, self._ss_step)
             return
