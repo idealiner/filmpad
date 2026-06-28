@@ -1875,6 +1875,9 @@ class FilmPad:
         return scenes
 
     def _start_script_supervisor(self) -> None:
+        if self.writer_ai_generating:
+            self.writer_ai_status_var.set("Wait for current generation to finish.")
+            return
         model = self.writer_ai_model_var.get().strip()
         if not model:
             messagebox.showwarning("Script Supervisor", "Select a model first.")
@@ -1911,12 +1914,17 @@ class FilmPad:
         if idx >= total:
             self._script_supervisor_running = False
             self._at_progress_var.set(100.0)
+            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
             if self._script_supervisor_btn:
                 self._script_supervisor_btn.configure(text="\u25b6 Script Supervisor")
             self._ss_log_var.set(f"Complete \u2014 {total} scene{'s' if total != 1 else ''} reviewed.")
             self.writer_ai_status_var.set("Script Supervisor complete.")
             return
         start, end = self._ss_scene_list[idx]
+        # Highlight and scroll to the scene being reviewed
+        self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
+        self.text.tag_add(AUTO_TRANSCRIPT_TAG, start, end)
+        self.text.see(start)
         scene_text = self.text.get(start, end)
         # Context windows: last ~400 chars of prev scene, first ~400 of next
         prev_ctx = ""
@@ -2157,6 +2165,22 @@ class FilmPad:
         ttk.Button(outer, text="Cancel", command=self._cancel_writer_ai_edit).pack(pady=(12, 0))
 
     def _cancel_writer_ai_edit(self) -> None:
+        if self._script_supervisor_running:
+            self._script_supervisor_running = False
+            proc = self._writer_ai_process
+            if proc is not None:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+            self._writer_ai_process = None
+            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
+            if self._script_supervisor_btn:
+                self._script_supervisor_btn.configure(text="\u25b6 Script Supervisor")
+            self._close_progress_overlay()
+            self.writer_ai_generating = False
+            self.writer_ai_status_var.set("Script Supervisor cancelled.")
+            return
         if self._auto_transcript_running:
             self._auto_transcript_running = False
             self._auto_transcript_cancelled = True
