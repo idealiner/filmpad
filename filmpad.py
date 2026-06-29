@@ -226,6 +226,7 @@ class FilmPad:
         self._ss_scene_idx: int = 0
         self._ss_log_var = tk.StringVar(value="")
         self._ss_pending: dict | None = None
+        self._ss_style_rewrite_var = tk.BooleanVar(value=False)
         self._auto_transcript_block_start: str | None = None
         self._auto_transcript_block_end: str | None = None
 
@@ -1221,6 +1222,11 @@ class FilmPad:
             command=self._toggle_script_supervisor,
         )
         self._script_supervisor_btn.pack(fill="x", pady=(0, 0))
+        ttk.Checkbutton(
+            self._writer_ai_content,
+            text="Rewrite to style ref (auto-apply)",
+            variable=self._ss_style_rewrite_var,
+        ).pack(anchor="w", pady=(4, 0))
         ttk.Label(
             self._writer_ai_content,
             textvariable=self._ss_log_var,
@@ -1614,6 +1620,26 @@ class FilmPad:
         "no [brackets], no explanatory notes, no preamble, no extra dialogue, nothing.\n"
         "10. Do NOT merge, split, or reorder scenes.\n\n"
         "Output the reformatted screenplay and nothing else."
+    )
+
+    _SS_STYLE_INSTRUCTIONS_DEFAULT = (
+        "Rewrite the SCENE TO REVIEW to fully conform to professional screenplay standards.\n"
+        "Apply ALL of the following improvements where needed:\n"
+        "1. Action lines: rewrite to be short (1\u20133 lines), present tense, visual and filmable. "
+        "No literary narration, no psychological explanation. Describe only what can be seen or heard.\n"
+        "2. Dialogue: make it direct, compressed, and character-specific. Remove over-explanation. "
+        "Preserve every spoken line \u2014 compress the delivery, not the meaning.\n"
+        "3. Exposition: if a character must explain something, give it attitude, break it into beats, "
+        "use physical action or props, stop before it becomes an essay.\n"
+        "4. Scene headings: ALL CAPS, INT./EXT. LOCATION \u2014 TIME format.\n"
+        "5. Parentheticals: sparingly, only when delivery is unclear from context.\n"
+        "6. Transitions: ALL CAPS, own line, ending with colon. Use only when meaningful.\n"
+        "7. Also fix any block-boundary artifacts, broken attribution, or formatting errors.\n\n"
+        "Preserve ALL story content, every story beat, every character, all dialogue meaning.\n"
+        "Do NOT add new content, new characters, or new events.\n"
+        "Do NOT add notes, annotations, or explanatory text.\n"
+        "Do NOT explain what you changed.\n"
+        "Output ONLY the rewritten scene text, nothing else."
     )
 
     _SS_INSTRUCTIONS_DEFAULT = (
@@ -2321,7 +2347,10 @@ class FilmPad:
         parts.append(f"SCENE TO REVIEW:\n{scene_text}\n")
         if next_ctx:
             parts.append(f"NEXT SCENE \u2014 OPENING (context only, do NOT include in output):\n{next_ctx}\n")
-        parts.append(self._load_custom_prompt("ss_prompt.txt", self._SS_INSTRUCTIONS_DEFAULT))
+        if self._ss_style_rewrite_var.get():
+            parts.append(self._load_custom_prompt("ss_prompt_style.txt", self._SS_STYLE_INSTRUCTIONS_DEFAULT))
+        else:
+            parts.append(self._load_custom_prompt("ss_prompt.txt", self._SS_INSTRUCTIONS_DEFAULT))
         style_ref = self._load_custom_prompt("style_reference.txt", "")
         if style_ref:
             parts.append(
@@ -2397,6 +2426,9 @@ class FilmPad:
             self._ss_scene_idx += 1
             self.root.after(400, self._ss_step)
             return
+        if self._ss_style_rewrite_var.get():
+            self._ss_auto_apply(proposed, start, end, scene_num, total)
+            return
         self._ss_pending = {
             "original": original.strip(),
             "proposed": proposed,
@@ -2404,6 +2436,22 @@ class FilmPad:
             "scene_num": scene_num, "total": total,
         }
         self._show_ss_comparison()
+
+    def _ss_auto_apply(
+        self, proposed: str, start: str, end: str, scene_num: int, total: int
+    ) -> None:
+        """Apply proposed rewrite directly without showing the comparison UI."""
+        try:
+            self.text.delete(start, end)
+            self.text.insert(start, proposed)
+            ins_end = self.text.index(f"{start} + {len(proposed)}c")
+            self._auto_tag_screenplay_block(self.text, start, ins_end)
+        except tk.TclError:
+            pass
+        self._ss_pending = None
+        self._ss_scene_list = self._ss_get_scenes()
+        self._ss_scene_idx = scene_num + 1
+        self.root.after(300, self._ss_step)
 
     def _show_ss_comparison(self) -> None:
         item = self._ss_pending
