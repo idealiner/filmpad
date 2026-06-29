@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 arch="${ARCH:-x86_64}"
-version="${VERSION:-0.7}"
+version="${VERSION:-0.7.1}"
 
 if ! command -v pyinstaller >/dev/null 2>&1; then
     echo "pyinstaller is required" >&2

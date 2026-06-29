@@ -219,6 +219,7 @@ class FilmPad:
         self._at_total_lines_snapshot: int = 0
         self._at_log_var = tk.StringVar(value="")
         self._at_progress_var = tk.DoubleVar(value=0.0)
+        self._progress_detail_var = tk.StringVar(value="")
         self._script_supervisor_running = False
         self._script_supervisor_btn: ttk.Button | None = None
         self._ss_scene_list: list[tuple[str, str]] = []
@@ -570,13 +571,13 @@ class FilmPad:
             spacing1=2, spacing3=4,
             justify="left",
         )
-        # Transition -- right-justified flush, double blank line above
+        # Transition -- centred, double blank line above
         widget.tag_configure(
             "Transition",
             font=self.screenplay_font,
             lmargin1=0, lmargin2=0, rmargin=0,
             spacing1=ls * 2, spacing3=ls,
-            justify="right",
+            justify="center",
         )
         # Shot -- full-width bold (sub-heading style), single blank line above
         widget.tag_configure(
@@ -1031,23 +1032,35 @@ class FilmPad:
         outer = ttk.Frame(self.editor_frame)
         self.editor_frame.add(outer, stretch="never", minsize=32)
 
+        _sash_after = [None]
+
         def _enforce_max_wa_width(event=None) -> None:
-            if getattr(self, "_wa_enforcing", False):
-                return
+            # Debounce: wait for geometry to settle before enforcing
+            if _sash_after[0] is not None:
+                self.root.after_cancel(_sash_after[0])
+            _sash_after[0] = self.root.after(80, _do_sash_enforce)
+
+        def _do_sash_enforce(event=None) -> None:
+            _sash_after[0] = None
             total = self.editor_frame.winfo_width()
             if total < 100:
                 return
             max_wa = max(32, total // 3)
             try:
                 sx = self.editor_frame.sash_coord(0)[0]
-                if total - sx > max_wa:
-                    self._wa_enforcing = True
+                right_w = total - sx
+                if right_w < 32 or sx >= total:
+                    # Sash off-screen — restore panel to 300px
+                    self.editor_frame.sash_place(0, max(0, total - 300), 0)
+                elif right_w > max_wa:
+                    # Panel too wide — cap at 1/3
                     self.editor_frame.sash_place(0, total - max_wa, 0)
-                    self._wa_enforcing = False
             except tk.TclError:
-                self._wa_enforcing = False
+                pass
+
         self.editor_frame.bind("<Configure>", _enforce_max_wa_width)
-        outer.bind("<Configure>", _enforce_max_wa_width)  # fires on sash drag
+        self.root.bind("<Configure>", _enforce_max_wa_width, add="+")
+        self.editor_frame.bind("<ButtonRelease-1>", _do_sash_enforce)  # sash drag end
 
         self._writer_ai_toggle_btn = ttk.Button(
             outer, text="\u25b6", width=3, command=self._toggle_writer_ai_sidebar
@@ -1086,20 +1099,9 @@ class FilmPad:
                 scrollregion=self._writer_ai_panel_canvas.bbox("all")
             ),
         )
-        # Start expanded — pack the container and schedule initial sash position
+        # Start expanded
         self._writer_ai_panel_container.pack(side="top", fill="both", expand=True)
-        self._writer_ai_toggle_btn.configure(text="\u25c4")
-
-        def _set_initial_sash() -> None:
-            total = self.editor_frame.winfo_width()
-            if total < 100:
-                self.root.after(50, _set_initial_sash)
-                return
-            try:
-                self.editor_frame.sash_place(0, max(300, total - total // 3), 0)
-            except tk.TclError:
-                pass
-        self.root.after(150, _set_initial_sash)
+        self._writer_ai_toggle_btn.configure(text="\u25b6")
 
         ttk.Label(
             self._writer_ai_content, text="Writer AI", font=("TkDefaultFont", 10, "bold")
@@ -1272,7 +1274,7 @@ class FilmPad:
         total = self.editor_frame.winfo_width()
         if self._writer_ai_panel_container.winfo_ismapped():
             self._writer_ai_panel_container.pack_forget()
-            self._writer_ai_toggle_btn.configure(text="\u25b6")
+            self._writer_ai_toggle_btn.configure(text="\u25c4")
             try:
                 self.editor_frame.sash_place(0, total - 36, 0)
             except tk.TclError:
@@ -1281,7 +1283,7 @@ class FilmPad:
             self._writer_ai_panel_container.pack(
                 side="top", fill="both", expand=True
             )
-            self._writer_ai_toggle_btn.configure(text="\u25c4")
+            self._writer_ai_toggle_btn.configure(text="\u25b6")
             default_wa = min(300, max(200, total // 4))
             try:
                 self.editor_frame.sash_place(0, total - default_wa, 0)
@@ -1298,7 +1300,7 @@ class FilmPad:
         <project_folder>/<filename>, then fallback."""
         folder = self.writer_ai_project_folder_var.get().strip()
         if folder:
-            base = pathlib.Path(folder)
+            base = Path(folder)
             for candidate in (base / "templates" / filename, base / filename):
                 if candidate.is_file():
                     try:
@@ -1624,6 +1626,9 @@ class FilmPad:
         "6. Malformed INSERT or BACK TO SCENE labels: fix to ALL CAPS standard form.\n\n"
         "Do NOT rewrite sentences, restructure action lines, change descriptions, "
         "add content, or alter meaning in any way.\n"
+        "Do NOT add notes, comments, annotations, parenthetical remarks, "
+        "or any text not present in the original.\n"
+        "Do NOT explain what you changed.\n"
         "If the scene has no issues, return it unchanged.\n"
         "Output ONLY the corrected scene text, nothing else."
     )
@@ -1746,6 +1751,10 @@ class FilmPad:
             self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
             if self._auto_transcript_btn:
                 self._auto_transcript_btn.configure(text="\u25b6 Auto Transcript")
+            try:
+                self._at_end_line = int(self.text.index("_at_cursor").split(".")[0])
+            except tk.TclError:
+                self._at_end_line = self._at_start_line
             if (self._at_extract_knowledge_var.get()
                     and (self._at_known_chars or self._at_known_locs)):
                 self.writer_ai_status_var.set("Writing knowledge files\u2026")
@@ -1770,7 +1779,11 @@ class FilmPad:
         )
         _pct = min(99.0, cur_line / max(1, self._at_total_lines_snapshot) * 100)
         self._at_progress_var.set(_pct)
-        self.writer_ai_status_var.set(f"Auto transcript: processing {n} lines\u2026")
+        end_line = min(cur_line + n - 1, self._at_total_lines_snapshot)
+        self._progress_detail_var.set(
+            f"Block {self._auto_transcript_block_num}"
+            f"  —  L{cur_line}–{end_line} of {self._at_total_lines_snapshot}"
+        )
         # Load prompt from project folder (auto_transcript_prompt.txt) or use built-in default
         prompt = self._load_custom_prompt("auto_transcript_prompt.txt", self._AT_PROMPT_DEFAULT)
         project_context = self._read_project_knowledge()
@@ -1991,37 +2004,51 @@ class FilmPad:
             i += 1
 
     def _at_write_knowledge_files(self) -> None:
-        """Write per-character and per-location .md files, then spawn project_memory."""
+        """Append per-character and per-location .md files, then spawn project_memory."""
         folder = self.writer_ai_project_folder_var.get().strip()
         if not folder:
             self._at_log_var.set("Extract: no project folder set.")
             self.writer_ai_status_var.set("Auto transcript complete.")
             return
-        folder_path = pathlib.Path(folder)
+        folder_path = Path(folder)
         written = 0
+        end_line = getattr(self, '_at_end_line', self._at_start_line)
+        section_label = f"## New info found on lines {self._at_start_line}\u2013{end_line}"
 
         # Character files
         for char_name, data in self._at_known_chars.items():
             fname = re.sub(r'[^\w]', '_', char_name).strip('_')[:50] + '.md'
-            parts = [f"# {char_name}\n\n"]
+            fpath = folder_path / fname
+            body_parts = []
             scenes = sorted(data.get('scenes', set()))
             if scenes:
-                parts.append(f"**Appears in:** {len(scenes)} scene(s)\n\n")
+                body_parts.append(f"**Appears in:** {len(scenes)} scene(s)\n\n")
                 for s in scenes[:10]:
-                    parts.append(f"- {s}\n")
-                parts.append("\n")
+                    body_parts.append(f"- {s}\n")
+                body_parts.append("\n")
             dialogue = data.get('dialogue', [])
             if dialogue:
-                parts.append("## Dialogue\n\n")
+                body_parts.append("### Dialogue\n\n")
                 for dl in dialogue:
-                    parts.append(f'- "{dl}"\n')
-                parts.append("\n")
+                    body_parts.append(f'- "{dl}"\n')
+                body_parts.append("\n")
             refs = data.get('refs', [])
             if refs:
-                parts.append("## Referenced in action\n\n")
+                body_parts.append("### Referenced in action\n\n")
                 for r in refs:
-                    parts.append(f"- {r}\n")
-            (folder_path / fname).write_text("".join(parts), encoding="utf-8")
+                    body_parts.append(f"- {r}\n")
+            body = "".join(body_parts)
+            if fpath.exists():
+                existing = fpath.read_text(encoding="utf-8").rstrip()
+                fpath.write_text(
+                    existing + f"\n\n{section_label}\n\n" + body,
+                    encoding="utf-8",
+                )
+            else:
+                fpath.write_text(
+                    f"# {char_name}\n\n{section_label}\n\n" + body,
+                    encoding="utf-8",
+                )
             written += 1
 
         # Location files
@@ -2035,12 +2062,24 @@ class FilmPad:
             if not slug:
                 continue
             fname = slug.upper() + '.md'
-            parts = [f"# {loc_heading}\n\n"]
+            fpath = folder_path / fname
+            body_parts = []
             if action_lines:
-                parts.append("## Action lines\n\n")
+                body_parts.append("### Action lines\n\n")
                 for al in action_lines:
-                    parts.append(f"- {al}\n")
-            (folder_path / fname).write_text("".join(parts), encoding="utf-8")
+                    body_parts.append(f"- {al}\n")
+            body = "".join(body_parts)
+            if fpath.exists():
+                existing = fpath.read_text(encoding="utf-8").rstrip()
+                fpath.write_text(
+                    existing + f"\n\n{section_label}\n\n" + body,
+                    encoding="utf-8",
+                )
+            else:
+                fpath.write_text(
+                    f"# {loc_heading}\n\n{section_label}\n\n" + body,
+                    encoding="utf-8",
+                )
             written += 1
 
         self._at_log_var.set(f"Wrote {written} knowledge files. Generating project_memory\u2026")
@@ -2079,14 +2118,14 @@ class FilmPad:
         )
         threading.Thread(
             target=self._at_write_project_memory_thread,
-            args=(folder_path, model, pm_prompt),
+            args=(folder_path, model, pm_prompt, section_label),
             daemon=True,
         ).start()
 
     def _at_write_project_memory_thread(
-        self, folder_path: pathlib.Path, model: str, prompt: str
+        self, folder_path: Path, model: str, prompt: str, section_label: str
     ) -> None:
-        """Background thread: call Ollama and write project_memory.md."""
+        """Background thread: call Ollama and append a section to project_memory.md."""
         import os as _os
         try:
             ollama_bin = shutil.which("ollama") or "ollama"
@@ -2103,9 +2142,18 @@ class FilmPad:
                 content = out.decode("utf-8", errors="replace").strip()
                 if content:
                     content = self._sanitize_local_ai_output(content)
-                    (folder_path / "project_memory.md").write_text(
-                        content, encoding="utf-8"
-                    )
+                    pm_path = folder_path / "project_memory.md"
+                    if pm_path.exists():
+                        existing = pm_path.read_text(encoding="utf-8").rstrip()
+                        pm_path.write_text(
+                            existing + f"\n\n{section_label}\n\n" + content,
+                            encoding="utf-8",
+                        )
+                    else:
+                        pm_path.write_text(
+                            f"# Project Memory\n\n{section_label}\n\n" + content,
+                            encoding="utf-8",
+                        )
                     self.root.after(0, lambda: self._at_log_var.set(
                         "Knowledge extraction complete — project_memory.md written."
                     ))
@@ -2273,6 +2321,13 @@ class FilmPad:
         self._ss_log_var.set(f"Scene {idx + 1} / {total}")
         _pct = min(99.0, idx / max(1, total) * 100)
         self._at_progress_var.set(_pct)
+        _start_line = int(start.split(".")[0])
+        _end_line = int(end.split(".")[0])
+        _total_lines = int(self.text.index("end-1c").split(".")[0])
+        self._progress_detail_var.set(
+            f"Scene {idx + 1} of {total}"
+            f"  —  L{_start_line}–{_end_line} of {_total_lines}"
+        )
         self.writer_ai_generating = True
         self._show_writer_ai_progress_overlay(
             f"Script Supervisor \u2014 scene {idx + 1}/{total}", model
@@ -2365,10 +2420,14 @@ class FilmPad:
                  bg=c["ttk_bg"], fg=c["ttk_fg"]).pack(side="right", padx=(0, 10))
 
         btn_bar = tk.Frame(win, bg=c["ttk_bg"])
-        btn_bar.pack(side="bottom", fill="x", padx=10, pady=8)
+        btn_bar.pack(side="bottom", fill="x", padx=10, pady=(0, 8))
+        # Instruction row
         tk.Label(btn_bar,
                  text="Edit the proposed text freely. Apply & Next to accept, Skip to keep original.",
-                 bg=c["ttk_bg"], fg=c["status_fg"]).pack(side="left")
+                 bg=c["ttk_bg"], fg=c["status_fg"], anchor="w").pack(fill="x")
+        # Countdown + buttons row
+        _btn_row = tk.Frame(btn_bar, bg=c["ttk_bg"])
+        _btn_row.pack(fill="x", pady=(4, 0))
 
         text_opts = dict(
             wrap="word", font=self.screenplay_font, padx=10, pady=10,
@@ -2472,17 +2531,17 @@ class FilmPad:
         win.protocol("WM_DELETE_WINDOW", _skip_and_next)
 
         # Countdown label above the buttons
-        tk.Label(btn_bar, textvariable=_countdown_var,
+        tk.Label(_btn_row, textvariable=_countdown_var,
                  bg=c["ttk_bg"], fg="#aaaaaa",
-                 font=("TkDefaultFont", 8)).pack(side="left", padx=(8, 0))
+                 font=("TkDefaultFont", 8)).pack(side="left")
 
-        tk.Button(btn_bar, text="Stop", width=8, command=_stop,
+        tk.Button(_btn_row, text="Stop", width=8, command=_stop,
                   bg=c["entry_bg"], fg=c["ttk_fg"], relief="flat",
                   activebackground=c["sel_bg"]).pack(side="right", padx=(6, 0))
-        tk.Button(btn_bar, text="Skip Scene", width=12, command=_skip_and_next,
+        tk.Button(_btn_row, text="Skip Scene", width=12, command=_skip_and_next,
                   bg=c["entry_bg"], fg=c["ttk_fg"], relief="flat",
                   activebackground=c["sel_bg"]).pack(side="right", padx=(6, 0))
-        tk.Button(btn_bar, text="Apply & Next", width=14, command=_apply_and_next,
+        tk.Button(_btn_row, text="Apply & Next", width=14, command=_apply_and_next,
                   bg="#0e639c", fg="white", relief="flat",
                   activebackground="#1177bb").pack(side="right")
 
@@ -2494,45 +2553,72 @@ class FilmPad:
         self._progress_win = tk.Toplevel(self.root)
         win = self._progress_win
         win.title("Generating\u2026")
-        win.resizable(False, False)
+        win.resizable(True, True)
         win.transient(self.root)
         win.protocol("WM_DELETE_WINDOW", lambda: None)
 
         self.root.update_idletasks()
-        w, h = 420, 270
+        w, h = 480, 380
         rx = self.root.winfo_rootx() + self.root.winfo_width() // 2 - w // 2
         ry = self.root.winfo_rooty() + self.root.winfo_height() // 2 - h // 2
         win.geometry(f"{w}x{h}+{rx}+{ry}")
         win.lift()
         win.focus_force()
 
-        outer = ttk.Frame(win, padding=(24, 18, 24, 14))
+        # Bottom bar outside body — always visible, like SS comparison window
+        bot = ttk.Frame(win, padding=(22, 6, 22, 10))
+        bot.pack(side="bottom", fill="x")
+        ttk.Separator(win).pack(side="bottom", fill="x")
+        self._elapsed_var = tk.StringVar(value="Elapsed: 0:00")
+        ttk.Label(bot, textvariable=self._elapsed_var,
+                  foreground="#888", font=("TkDefaultFont", 9)).pack(side="left")
+        ttk.Button(bot, text="Cancel",
+                   command=self._cancel_writer_ai_edit).pack(side="right")
+
+        outer = ttk.Frame(win, padding=(22, 16, 22, 8))
         outer.pack(fill="both", expand=True)
 
-        ttk.Label(outer, text="Writer AI \u2014 Generating",
+        # Contextual title — derived from detail rather than generic heading
+        if detail.lower().startswith("auto transcript"):
+            title = "Auto Transcript"
+        elif "script supervisor" in detail.lower():
+            title = "Script Supervisor"
+        else:
+            title = "Writer AI Edit"
+        ttk.Label(outer, text=title,
                   font=("TkDefaultFont", 11, "bold")).pack(anchor="w")
+        ttk.Label(outer, text=detail, wraplength=430,
+                  font=("TkDefaultFont", 9)).pack(anchor="w", pady=(2, 0))
+        ttk.Label(outer, text=f"Model:  {model}",
+                  font=("TkDefaultFont", 9), foreground="#888").pack(anchor="w")
 
-        detail_frame = ttk.Frame(outer, padding=(0, 8, 0, 8))
-        detail_frame.pack(fill="x")
-        ttk.Label(detail_frame, text=f"Prompt:  {detail}", wraplength=360).pack(anchor="w")
-        ttk.Label(detail_frame, text=f"Model:   {model}").pack(anchor="w")
+        ttk.Separator(outer).pack(fill="x", pady=(10, 8))
 
-        self._elapsed_var = tk.StringVar(value="Elapsed: 0:00")
-        ttk.Label(outer, textvariable=self._elapsed_var,
-                  foreground="#888").pack(anchor="w", pady=(4, 4))
-        self._generation_start_time = time.monotonic()
-        self._tick_elapsed_timer()
-
-        self._progress_bar = ttk.Progressbar(outer, mode="indeterminate", length=370)
+        # Animated activity bar (current block)
+        _s = ttk.Style()
+        _s.configure("Activity.Horizontal.TProgressbar", thickness=20)
+        self._progress_bar = ttk.Progressbar(
+            outer, mode="indeterminate",
+            style="Activity.Horizontal.TProgressbar",
+        )
         self._progress_bar.pack(fill="x")
         self._progress_bar.start(10)
 
-        ttk.Label(outer, text="Overall document progress:",
-                  font=("TkDefaultFont", 8), foreground="#888").pack(anchor="w", pady=(8, 0))
-        ttk.Progressbar(outer, variable=self._at_progress_var,
-                        mode="determinate", maximum=100, length=370).pack(fill="x")
+        # Overall document progress
+        self._progress_label_var = tk.StringVar(value="Document progress:  0%")
+        ttk.Label(outer, textvariable=self._progress_label_var,
+                  font=("TkDefaultFont", 8), foreground="#aaa").pack(anchor="w", pady=(10, 2))
+        _s.configure("Overall.Horizontal.TProgressbar", thickness=14)
+        ttk.Progressbar(
+            outer, variable=self._at_progress_var,
+            mode="determinate", maximum=100,
+            style="Overall.Horizontal.TProgressbar",
+        ).pack(fill="x")
+        ttk.Label(outer, textvariable=self._progress_detail_var,
+                  font=("TkDefaultFont", 8), foreground="#aaa").pack(anchor="w", pady=(3, 0))
 
-        ttk.Button(outer, text="Cancel", command=self._cancel_writer_ai_edit).pack(pady=(10, 0))
+        self._generation_start_time = time.monotonic()
+        self._tick_elapsed_timer()
 
     def _cancel_writer_ai_edit(self) -> None:
         if self._script_supervisor_running:
@@ -3181,6 +3267,9 @@ class FilmPad:
             elapsed = int(time.monotonic() - self._generation_start_time)
             mins, secs = divmod(elapsed, 60)
             self._elapsed_var.set(f"Elapsed: {mins}:{secs:02d}")
+            if hasattr(self, "_progress_label_var"):
+                pct = self._at_progress_var.get()
+                self._progress_label_var.set(f"Document progress:  {pct:.0f}%")
             self._progress_win.after(1000, self._tick_elapsed_timer)
 
     def _update_progress_step(self, step: int, message: str) -> None:

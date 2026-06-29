@@ -15,5 +15,8 @@ Fix ONLY these issues in the SCENE TO REVIEW:
 
 Do NOT rewrite sentences, restructure action lines, change descriptions,
 add content, or alter meaning in any way.
+Do NOT add notes, comments, annotations, parenthetical remarks,
+or any text not present in the original scene.
+Do NOT explain what you changed.
 If the scene has no issues, return it unchanged.
 Output ONLY the corrected scene text, nothing else.

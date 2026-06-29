@@ -235,7 +235,7 @@
 <body>
   <main class="card">
     <div class="eyebrow">FilmPad &mdash; Linux release</div>
-    <h1>Download v0.6</h1>
+    <h1>Download v0.7.1</h1>
     <p>
       FilmPad is a screenplay editor with a built-in Local AI workspace for adapting prose source text into
       properly formatted screenplay scenes, powered by locally running <a href="https://ollama.com" style="color:var(--accent)">Ollama</a> models &mdash; no cloud, no API key.
@@ -244,7 +244,7 @@
     <section class="meta" aria-label="Release details">
       <div class="stat">
         <span class="stat-label">Version</span>
-        <span class="stat-value">0.6</span>
+        <span class="stat-value">0.7.1</span>
       </div>
       <div class="stat">
         <span class="stat-label">Package</span>
@@ -257,7 +257,7 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.6/FilmPad-v0.6-x86_64.AppImage">&#8659; Download AppImage</a>
+      <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.7.1/FilmPad-v0.7.1-x86_64.AppImage">&#8659; Download AppImage</a>
       <a class="button secondary" href="https://raw.githubusercontent.com/idealiner/filmpad/main/doctor.sh">Download doctor.sh</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad">GitHub Repository</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad/releases">All Releases</a>
@@ -275,12 +275,27 @@
     </section>
 
     <p class="footnote">
-      <code>chmod +x FilmPad-v0.6-x86_64.AppImage &amp;&amp; ./FilmPad-v0.6-x86_64.AppImage</code>
+      <code>chmod +x FilmPad-v0.7.1-x86_64.AppImage &amp;&amp; ./FilmPad-v0.7.1-x86_64.AppImage</code>
     </p>
 
     <p class="footnote">
       <code>chmod +x doctor.sh &amp;&amp; ./doctor.sh</code>
     </p>
+
+    <h2>What&rsquo;s new in v0.7.1</h2>
+    <ul>
+      <li><strong>Centred transitions</strong> &mdash; <code>CUT TO:</code>, <code>FADE TO:</code> and all other Transition blocks are now centred in the script editor</li>
+      <li><strong>Script Supervisor reliability</strong> &mdash; comparison button bar is always visible; LLM output no longer writes annotations, correction notes, or parenthetical remarks into the script</li>
+      <li><strong>Progress detail line</strong> &mdash; overlay shows <em>Scene N of T &mdash; LX&ndash;Y of Z</em> and <em>Block N &mdash; LX&ndash;Y of Z</em> while processing</li>
+      <li><strong>Overlay redesign</strong> &mdash; contextual title derived from current task; thicker progress bars; Cancel button always visible outside the scrollable body</li>
+      <li><strong>Sidebar stays open</strong> &mdash; Writer AI panel opens expanded at launch and no longer collapses on window maximise</li>
+      <li><strong>Toggle icons</strong> &mdash; &rsaquo; when expanded (click to collapse), &lsaquo; when collapsed (click to expand)</li>
+    </ul>
+
+    <h2>What&rsquo;s new in v0.7</h2>
+    <ul>
+      <li><strong>Knowledge extraction</strong> &mdash; Auto Transcript can write character and location notes to <code>.md</code> files in your project folder; a project memory file is also generated via LLM for long-term context</li>
+    </ul>
 
     <h2>What&rsquo;s new in v0.6</h2>
     <ul>
