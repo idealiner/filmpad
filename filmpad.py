@@ -1786,6 +1786,9 @@ class FilmPad:
         )
         # Load prompt from project folder (auto_transcript_prompt.txt) or use built-in default
         prompt = self._load_custom_prompt("auto_transcript_prompt.txt", self._AT_PROMPT_DEFAULT)
+        style_ref = self._load_custom_prompt("style_reference.txt", "")
+        if style_ref:
+            prompt = prompt + "\n\nSTYLE REFERENCE — use as a formatting and prose style guide for output quality:\n" + style_ref
         project_context = self._read_project_knowledge()
         full_prompt = self._build_writer_ai_prompt(block_text, prompt, project_context)
         model = self.writer_ai_model_var.get().strip()
@@ -2315,6 +2318,9 @@ class FilmPad:
         parts.append(f"SCENE TO REVIEW:\n{scene_text}\n")
         if next_ctx:
             parts.append(f"NEXT SCENE \u2014 OPENING (context only, do NOT include in output):\n{next_ctx}\n")
+        style_ref = self._load_custom_prompt("style_reference.txt", "")
+        if style_ref:
+            parts.append(f"STYLE REFERENCE — use as a formatting and prose style guide for output quality:\n{style_ref}\n")
         parts.append(self._load_custom_prompt("ss_prompt.txt", self._SS_INSTRUCTIONS_DEFAULT))
         prompt = "\n".join(parts)
         model = self.writer_ai_model_var.get().strip()
