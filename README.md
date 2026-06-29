@@ -28,6 +28,21 @@ If the app does not launch on first try, download and run `doctor.sh` from the t
 
 ## Releases
 
+### v0.7.1 — Polish & Reliability
+*2026-06-28*
+
+- **Centred transitions** — `CUT TO:`, `FADE TO:` and all other Transition blocks are now centred in the script editor
+- **Script Supervisor reliability** — comparison button bar is always visible; LLM output no longer writes annotations, correction notes, or parenthetical remarks into the script
+- **Progress detail line** — overlay shows *Scene N of T — LX–Y of Z* and *Block N — LX–Y of Z* while processing
+- **Overlay redesign** — contextual title derived from current task; thicker progress bars; Cancel button always visible outside the scrollable body
+- **Sidebar stays open** — Writer AI panel opens expanded at launch and no longer collapses on window maximise
+- **Toggle icons** — ► when expanded (click to collapse), ◄ when collapsed (click to expand)
+
+### v0.7 — Knowledge Extraction
+*2026-06-28*
+
+- **Knowledge extraction** — Auto Transcript can write character and location notes to `.md` files in your project folder; a project memory file is also generated via LLM for long-term context
+
 ### v0.6 — Script Supervisor, Progress Bar & Launcher Tkinter Check
 *2026-06-28*
 
@@ -375,6 +390,29 @@ Behavior notes:
 - Scene Heading, Character, Transition, and Shot are uppercased automatically
 - Parenthetical wraps selected lines with parentheses when needed
 - Formatting is line-based and applies margins/spacing for each screenplay block type
+
+## Custom Prompts
+
+FilmPad loads `auto_transcript_prompt.txt` (Auto Transcript) and `ss_prompt.txt` (Script Supervisor) from your **project folder** at runtime, falling back to the built-in defaults if no file is found.
+
+To override either prompt, drop the file into your project folder:
+
+```
+my-project/
+  auto_transcript_prompt.txt   ← overrides Auto Transcript instructions
+  ss_prompt.txt                ← overrides Script Supervisor instructions
+```
+
+Or place them in a `templates/` subfolder inside the project folder — FilmPad checks there first:
+
+```
+my-project/
+  templates/
+    auto_transcript_prompt.txt
+    ss_prompt.txt
+```
+
+Starter files are attached to each release on the [GitHub releases page](https://github.com/idealiner/filmpad/releases).
 
 ## Building a Binary
 
