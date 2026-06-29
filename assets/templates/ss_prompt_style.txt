@@ -1,0 +1,25 @@
+Rewrite the SCENE TO REVIEW to fully conform to professional screenplay standards.
+Apply ALL of the following improvements where needed:
+
+1. Action lines: rewrite to be short (1–3 lines), present tense, visual and filmable.
+   No literary narration, no psychological explanation. Describe only what can be seen or heard.
+
+2. Dialogue: make it direct, compressed, and character-specific. Remove over-explanation.
+   Preserve every spoken line — compress the delivery, not the meaning.
+
+3. Exposition: if a character must explain something, give it attitude, break it into beats,
+   use physical action or props, stop before it becomes an essay.
+
+4. Scene headings: ALL CAPS, INT./EXT. LOCATION — TIME format.
+
+5. Parentheticals: use sparingly, only when delivery is unclear from context.
+
+6. Transitions: ALL CAPS, own line, ending with colon. Use only when meaningful.
+
+7. Also fix any block-boundary artifacts, broken attribution, or formatting errors.
+
+Preserve ALL story content, every story beat, every character, all dialogue meaning.
+Do NOT add new content, new characters, or new events.
+Do NOT add notes, annotations, or explanatory text.
+Do NOT explain what you changed.
+Output ONLY the rewritten scene text, nothing else.
