@@ -398,6 +398,24 @@ class FilmPad:
             background=c["sel_bg"], troughcolor=c["entry_bg"],
             bordercolor=c["entry_bg"],
         )
+        # Checkbuttons: explicit indicator colours so the checked state is legible
+        # in dark mode (clam theme defaults render indicator-on-dark as invisible).
+        _cb_checked = "#4a9eff" if self._dark_mode else c["sel_bg"]
+        _cb_unchecked = c["entry_bg"] if self._dark_mode else "#cccccc"
+        style.configure("TCheckbutton",
+            background=c["ttk_bg"], foreground=c["ttk_fg"],
+            indicatorcolor=_cb_unchecked,
+            focuscolor=c["ttk_bg"],
+        )
+        style.map("TCheckbutton",
+            background=[("active", c["ttk_bg"]), ("pressed", c["ttk_bg"])],
+            foreground=[("active", c["ttk_fg"]), ("disabled", c["gutter_fg"])],
+            indicatorcolor=[
+                ("selected", _cb_checked),
+                ("pressed selected", _cb_checked),
+                ("!selected", _cb_unchecked),
+            ],
+        )
         # Remove the highlight ring on the root and toolbar
         self.root.configure(bg=c["ttk_bg"],
             highlightbackground=c["ttk_bg"], highlightcolor=c["ttk_bg"],
@@ -2290,6 +2308,30 @@ class FilmPad:
         if not scenes:
             messagebox.showinfo("Script Supervisor", "No scenes found to review.")
             return
+        if self._ss_style_rewrite_var.get():
+            folder = self.writer_ai_project_folder_var.get().strip()
+            style_found = False
+            if folder:
+                base = Path(folder)
+                for candidate in (base / "templates" / "style_reference.txt", base / "style_reference.txt"):
+                    if candidate.is_file():
+                        style_found = True
+                        break
+            if not style_found:
+                messagebox.showerror(
+                    "Script Supervisor — Style Rewrite",
+                    "style_reference.txt not found.\n\n"
+                    "Place your style reference file in the project knowledge folder:\n"
+                    "  <project folder>/style_reference.txt\n"
+                    "  or\n"
+                    "  <project folder>/templates/style_reference.txt\n\n"
+                    "Set the project folder in the Writer AI panel, then try again."
+                    if folder else
+                    "No project folder is set.\n\n"
+                    "Set a project knowledge folder in the Writer AI panel first, "
+                    "then add style_reference.txt to it."
+                )
+                return
         self._ss_scene_list = scenes
         self._ss_scene_idx = 0
         self._ss_pending = None
@@ -2421,8 +2463,10 @@ class FilmPad:
         import difflib
         proposed = self._sanitize_local_ai_output(output).strip()
         ratio = difflib.SequenceMatcher(None, original.strip(), proposed).ratio()
-        if ratio > 0.89:
-            # Less than 11% different — move on automatically
+        # Style rewrite mode: apply anything with even tiny differences (only skip
+        # if LLM returned essentially identical text). Standard mode: skip if <11% changed.
+        skip_threshold = 0.99 if self._ss_style_rewrite_var.get() else 0.89
+        if ratio > skip_threshold:
             self._ss_scene_idx += 1
             self.root.after(400, self._ss_step)
             return
