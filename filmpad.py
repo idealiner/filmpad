@@ -428,12 +428,10 @@ class FilmPad:
                 _cb.bind("<Leave>", lambda e, w=_cb, n=_cb_normal_bg: w.configure(bg=n))
             except Exception:
                 pass
-        # Accordion headers
-        for (hdr, arrow_lbl, title_lbl) in getattr(self, "_accordion_headers", []):
+        # Accordion headers — call each section's refresh function
+        for _refresh in getattr(self, "_accordion_headers", []):
             try:
-                hdr.configure(bg=c["ttk_bg"])
-                arrow_lbl.configure(bg=c["ttk_bg"], fg=c["ttk_fg"])
-                title_lbl.configure(bg=c["ttk_bg"], fg=c["ttk_fg"])
+                _refresh()
             except Exception:
                 pass
         if hasattr(self, "_writer_ai_panel_canvas"):
@@ -1115,7 +1113,7 @@ class FilmPad:
         _wa_sb.pack(side="right", fill="y")
         self._writer_ai_panel_canvas = tk.Canvas(
             self._writer_ai_panel_container,
-            highlightthickness=0, width=270,
+            highlightthickness=0, width=310,
             background=DARK_COLORS["ttk_bg"],
             yscrollcommand=_wa_sb.set,
         )
@@ -1143,15 +1141,37 @@ class FilmPad:
         self._writer_ai_toggle_btn.configure(text="\u25b6")
 
         # \u2500\u2500 Accordion helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        def _make_acc(title: str, expanded: bool = True) -> ttk.Frame:
+        def _make_acc(title: str, expanded: bool = False) -> ttk.Frame:
             c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
-            wrapper = ttk.Frame(self._writer_ai_content)
-            wrapper.pack(fill="x", pady=(6, 0))
-            hdr = tk.Frame(wrapper, bg=c["ttk_bg"], cursor="hand2")
+            outer = tk.Frame(
+                self._writer_ai_content,
+                bg=c["ttk_bg"],
+                highlightbackground=c["ttk_bg"], highlightthickness=0,
+            )
+            outer.pack(fill="x", pady=(5, 0))
+            hdr = tk.Frame(outer, bg=c["ttk_bg"], cursor="hand2")
             hdr.pack(fill="x")
-            body = ttk.Frame(wrapper, padding=(4, 0, 0, 4))
+            body = ttk.Frame(outer, padding=(4, 2, 0, 6))
             _open = [expanded]
             _arrow = tk.StringVar(value="\u25bc" if expanded else "\u25b6")
+
+            def _accent():
+                cc = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+                acc = _get_system_accent_sel_bg() if self._dark_mode else cc["sel_bg"]
+                return acc, cc["sel_fg"], cc["ttk_bg"], cc["ttk_fg"]
+
+            def _apply_style():
+                acc, acc_fg, bg, fg = _accent()
+                if _open[0]:
+                    outer.configure(highlightbackground=acc, highlightthickness=1, bg=bg)
+                    hdr.configure(bg=acc)
+                    arrow_lbl.configure(bg=acc, fg=acc_fg)
+                    title_lbl.configure(bg=acc, fg=acc_fg)
+                else:
+                    outer.configure(highlightbackground=bg, highlightthickness=0, bg=bg)
+                    hdr.configure(bg=bg)
+                    arrow_lbl.configure(bg=bg, fg=fg)
+                    title_lbl.configure(bg=bg, fg=fg)
 
             def _toggle(e=None):
                 _open[0] = not _open[0]
@@ -1161,6 +1181,7 @@ class FilmPad:
                 else:
                     body.pack_forget()
                     _arrow.set("\u25b6")
+                _apply_style()
                 self._writer_ai_content.update_idletasks()
                 self._writer_ai_panel_canvas.configure(
                     scrollregion=self._writer_ai_panel_canvas.bbox("all")
@@ -1174,23 +1195,20 @@ class FilmPad:
             arrow_lbl.bind("<Button-1>", _toggle)
             title_lbl = tk.Label(
                 hdr, text=title, bg=c["ttk_bg"], fg=c["ttk_fg"],
-                font=("TkDefaultFont", 9, "bold"), cursor="hand2", pady=3,
+                font=("TkDefaultFont", 9, "bold"), cursor="hand2", pady=4,
             )
             title_lbl.pack(side="left")
             title_lbl.bind("<Button-1>", _toggle)
             hdr.bind("<Button-1>", _toggle)
-            self._accordion_headers.append((hdr, arrow_lbl, title_lbl))
+            self._accordion_headers.append(_apply_style)
             if expanded:
                 body.pack(fill="x")
+                _apply_style()
             return body
 
-        # \u2500\u2500 Shared config (always visible) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        ttk.Label(
-            self._writer_ai_content, text="Writer AI", font=("TkDefaultFont", 10, "bold")
-        ).pack(anchor="w")
-
+        # ── Shared config (always visible) ─────────────────────────────────────────────
         ttk.Label(self._writer_ai_content, text="Project knowledge folder").pack(
-            anchor="w", pady=(6, 0)
+            anchor="w", pady=(4, 0)
         )
         folder_row = ttk.Frame(self._writer_ai_content)
         folder_row.pack(fill="x", pady=(2, 4))
@@ -1209,13 +1227,19 @@ class FilmPad:
             state="readonly",
             width=28,
         ).pack(fill="x", pady=(2, 0))
+        ttk.Label(
+            self._writer_ai_content,
+            text="Select a function to start.",
+            font=("TkDefaultFont", 8),
+            foreground="#888888",
+        ).pack(anchor="w", pady=(6, 0))
 
         # \u2500\u2500 Accordion 1: Writer AI tools \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        _wa = _make_acc("Writer AI", expanded=True)
+        _wa = _make_acc("Writer AI", expanded=False)
         ttk.Label(
             _wa,
             text="Select text in editor, write a prompt, then generate.",
-            wraplength=240, font=("TkDefaultFont", 8),
+            wraplength=280, font=("TkDefaultFont", 8),
         ).pack(anchor="w", pady=(0, 4))
         ttk.Label(_wa, text="Prompt").pack(anchor="w")
         prompt_frame = ttk.Frame(_wa)
@@ -1244,7 +1268,7 @@ class FilmPad:
         ).pack(fill="x", pady=(4, 0))
 
         # \u2500\u2500 Accordion 2: Auto Transcript \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        _at = _make_acc("Auto Transcript", expanded=True)
+        _at = _make_acc("Auto Transcript", expanded=False)
         ttk.Label(
             _at,
             text="Place cursor at start point, then run. Processes the whole document block by block without review.",
@@ -1280,7 +1304,7 @@ class FilmPad:
         self._sidebar_checkbuttons.append(_cb2)
 
         # \u2500\u2500 Accordion 3: Script Supervisor \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        _ss = _make_acc("Script Supervisor", expanded=True)
+        _ss = _make_acc("Script Supervisor", expanded=False)
         ttk.Label(
             _ss,
             text="Second-pass review: finds continuity gaps, block artifacts and "
