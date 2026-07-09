@@ -225,8 +225,10 @@ class FilmPad:
         self._ss_scene_list: list[tuple[str, str]] = []
         self._ss_scene_idx: int = 0
         self._ss_log_var = tk.StringVar(value="")
+        self._ss_full_log: list = []
         self._ss_pending: dict | None = None
         self._ss_style_rewrite_var = tk.BooleanVar(value=False)
+        self._sidebar_checkbuttons: list = []  # tk.Checkbutton refs updated in _apply_theme
         self._auto_transcript_block_start: str | None = None
         self._auto_transcript_block_end: str | None = None
 
@@ -349,10 +351,10 @@ class FilmPad:
             relief="flat", borderwidth=1, padding=(4, 2),
         )
         style.map("TButton",
-            background=[("active", c["entry_bg"]), ("pressed", c["sel_bg"])],
-            foreground=[("active", c["ttk_fg"])],
-            bordercolor=[("active", bd), ("pressed", c["sel_bg"])],
-            darkcolor=[("active", bd)], lightcolor=[("active", bd)],
+            background=[("active", c["sel_bg"]), ("pressed", c["sel_bg"])],
+            foreground=[("active", c["sel_fg"]), ("pressed", c["sel_fg"])],
+            bordercolor=[("active", c["sel_bg"]), ("pressed", c["sel_bg"])],
+            darkcolor=[("active", c["sel_bg"])], lightcolor=[("active", c["sel_bg"])],
         )
         style.configure("TEntry",
             fieldbackground=c["entry_bg"], foreground=c["ttk_fg"],
@@ -398,24 +400,29 @@ class FilmPad:
             background=c["sel_bg"], troughcolor=c["entry_bg"],
             bordercolor=c["entry_bg"],
         )
-        # Checkbuttons: explicit indicator colours so the checked state is legible
-        # in dark mode (clam theme defaults render indicator-on-dark as invisible).
-        _cb_checked = "#4a9eff" if self._dark_mode else c["sel_bg"]
-        _cb_unchecked = c["entry_bg"] if self._dark_mode else "#cccccc"
-        style.configure("TCheckbutton",
-            background=c["ttk_bg"], foreground=c["ttk_fg"],
-            indicatorcolor=_cb_unchecked,
-            focuscolor=c["ttk_bg"],
-        )
-        style.map("TCheckbutton",
-            background=[("active", c["ttk_bg"]), ("pressed", c["ttk_bg"])],
-            foreground=[("active", c["ttk_fg"]), ("disabled", c["gutter_fg"])],
-            indicatorcolor=[
-                ("selected", _cb_checked),
-                ("pressed selected", _cb_checked),
-                ("!selected", _cb_unchecked),
-            ],
-        )
+        # Classic tk.Checkbutton — neutral indicator, accent highlight on hover
+        _cb_normal_bg = c["ttk_bg"]
+        _cb_hover_bg = c["sel_bg"]
+        for _cb in getattr(self, "_sidebar_checkbuttons", []):
+            try:
+                _cb.configure(
+                    bg=_cb_normal_bg, fg=c["ttk_fg"],
+                    activebackground=_cb_hover_bg, activeforeground=c["sel_fg"],
+                    selectcolor=c["entry_bg"],
+                    highlightbackground=_cb_normal_bg, highlightcolor=_cb_normal_bg,
+                    highlightthickness=0,
+                )
+                _cb.unbind("<Enter>")
+                _cb.unbind("<Leave>")
+                _cb.bind("<Enter>", lambda e, w=_cb, h=_cb_hover_bg: w.configure(bg=h))
+                _cb.bind("<Leave>", lambda e, w=_cb, n=_cb_normal_bg: w.configure(bg=n))
+            except Exception:
+                pass
+        # File-dialog and other classic Listbox selection colours
+        self.root.option_add("*Listbox.selectBackground", c["sel_bg"])
+        self.root.option_add("*Listbox.selectForeground", c["sel_fg"])
+        self.root.option_add("*Listbox.background", c["entry_bg"])
+        self.root.option_add("*Listbox.foreground", c["ttk_fg"])
         # Remove the highlight ring on the root and toolbar
         self.root.configure(bg=c["ttk_bg"],
             highlightbackground=c["ttk_bg"], highlightcolor=c["ttk_bg"],
@@ -1210,16 +1217,22 @@ class FilmPad:
             maximum=100,
         )
         self._at_progress_bar.pack(fill="x", pady=(4, 2))
-        ttk.Checkbutton(
+        _cb1 = tk.Checkbutton(
             self._writer_ai_content,
             text="Safe mode (smaller steps, slower, more stable)",
             variable=self._auto_transcript_safe_mode_var,
-        ).pack(anchor="w", pady=(4, 0))
-        ttk.Checkbutton(
+            relief="flat", borderwidth=0, padx=0,
+        )
+        _cb1.pack(anchor="w", padx=0, pady=(4, 0))
+        self._sidebar_checkbuttons.append(_cb1)
+        _cb2 = tk.Checkbutton(
             self._writer_ai_content,
             text="Extract knowledge to project folder",
             variable=self._at_extract_knowledge_var,
-        ).pack(anchor="w", pady=(2, 0))
+            relief="flat", borderwidth=0, padx=0,
+        )
+        _cb2.pack(anchor="w", padx=0, pady=(2, 0))
+        self._sidebar_checkbuttons.append(_cb2)
 
         ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 4))
         ttk.Label(
@@ -1240,11 +1253,14 @@ class FilmPad:
             command=self._toggle_script_supervisor,
         )
         self._script_supervisor_btn.pack(fill="x", pady=(0, 0))
-        ttk.Checkbutton(
+        _cb3 = tk.Checkbutton(
             self._writer_ai_content,
             text="Rewrite to style ref (auto-apply)",
             variable=self._ss_style_rewrite_var,
-        ).pack(anchor="w", pady=(4, 0))
+            relief="flat", borderwidth=0, padx=0,
+        )
+        _cb3.pack(anchor="w", padx=0, pady=(4, 0))
+        self._sidebar_checkbuttons.append(_cb3)
         ttk.Label(
             self._writer_ai_content,
             textvariable=self._ss_log_var,
@@ -1252,6 +1268,11 @@ class FilmPad:
             font=("TkDefaultFont", 8),
             foreground="#888888",
         ).pack(anchor="w", pady=(4, 0))
+        ttk.Button(
+            self._writer_ai_content,
+            text="View SS Log",
+            command=self._show_ss_log_window,
+        ).pack(fill="x", pady=(4, 0))
 
         ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 6))
         ttk.Label(
@@ -1340,10 +1361,16 @@ class FilmPad:
         if not folder or not Path(folder).is_dir():
             return ""
         MAX_CHARS = 8000
+        _KNOWLEDGE_EXCLUDE = {
+            "style_reference.txt",
+            "ss_prompt.txt", "ss_prompt_style.txt", "auto_transcript_prompt.txt",
+        }
         chunks: list[str] = []
         total = 0
         for ext in ("*.md", "*.txt", "*.fdx"):
             for fpath in sorted(Path(folder).glob(ext)):
+                if fpath.name in _KNOWLEDGE_EXCLUDE:
+                    continue
                 if total >= MAX_CHARS:
                     break
                 try:
@@ -1641,23 +1668,24 @@ class FilmPad:
     )
 
     _SS_STYLE_INSTRUCTIONS_DEFAULT = (
-        "Rewrite the SCENE TO REVIEW to fully conform to professional screenplay standards.\n"
-        "Apply ALL of the following improvements where needed:\n"
-        "1. Action lines: rewrite to be short (1\u20133 lines), present tense, visual and filmable. "
-        "No literary narration, no psychological explanation. Describe only what can be seen or heard.\n"
-        "2. Dialogue: make it direct, compressed, and character-specific. Remove over-explanation. "
-        "Preserve every spoken line \u2014 compress the delivery, not the meaning.\n"
-        "3. Exposition: if a character must explain something, give it attitude, break it into beats, "
-        "use physical action or props, stop before it becomes an essay.\n"
-        "4. Scene headings: ALL CAPS, INT./EXT. LOCATION \u2014 TIME format.\n"
-        "5. Parentheticals: sparingly, only when delivery is unclear from context.\n"
-        "6. Transitions: ALL CAPS, own line, ending with colon. Use only when meaningful.\n"
-        "7. Also fix any block-boundary artifacts, broken attribution, or formatting errors.\n\n"
-        "Preserve ALL story content, every story beat, every character, all dialogue meaning.\n"
-        "Do NOT add new content, new characters, or new events.\n"
-        "Do NOT add notes, annotations, or explanatory text.\n"
+        "Apply ONLY the formatting and style rules in REQUIRED OUTPUT STYLE to the SCENE TO REWRITE.\n"
+        "Your task is formatting corrections only. You must not change any words.\n\n"
+        "Permitted corrections:\n"
+        "1. Scene headings: correct capitalisation to ALL CAPS, INT./EXT. LOCATION \u2014 TIME format.\n"
+        "2. Transitions: correct to ALL CAPS ending with colon, on their own line.\n"
+        "3. Character cue lines above dialogue: correct to ALL CAPS.\n"
+        "4. Parentheticals: place on their own line, in parentheses.\n"
+        "5. Apply capitalisation, punctuation, or spacing rules from REQUIRED OUTPUT STYLE.\n\n"
+        "ABSOLUTE RESTRICTIONS \u2014 you must NOT under any circumstances:\n"
+        "- Change, remove, add, or reorder any words in action lines or dialogue.\n"
+        "- Paraphrase, compress, expand, or rephrase any sentence.\n"
+        "- Restructure, split, or merge paragraphs or beats.\n"
+        "- Add or remove story content, characters, events, props, or descriptions.\n"
+        "- Change tense, voice, or perspective.\n"
+        "- Add notes, commentary, annotations, or headings not in the original.\n\n"
+        "If the scene already conforms, return it completely unchanged.\n"
         "Do NOT explain what you changed.\n"
-        "Output ONLY the rewritten scene text, nothing else."
+        "Output ONLY the scene text, nothing else."
     )
 
     _SS_INSTRUCTIONS_DEFAULT = (
@@ -1765,6 +1793,16 @@ class FilmPad:
         if not self._confirm_auto_transcript_environment():
             self.writer_ai_status_var.set("Auto transcript cancelled by safety warning.")
             return
+        if self._at_extract_knowledge_var.get():
+            if not self.writer_ai_project_folder_var.get().strip():
+                self._show_popup_error(
+                    "Auto Transcript — Extract Knowledge",
+                    "No project folder is set.\n\n"
+                    "Set a project knowledge folder\n"
+                    "in the Writer AI panel,\n"
+                    "then retry."
+                )
+                return
         self._auto_transcript_cancelled = False
         self._auto_transcript_process = None
         self._at_known_chars = {}
@@ -2318,23 +2356,26 @@ class FilmPad:
                         style_found = True
                         break
             if not style_found:
-                messagebox.showerror(
-                    "Script Supervisor — Style Rewrite",
+                msg = (
                     "style_reference.txt not found.\n\n"
-                    "Place your style reference file in the project knowledge folder:\n"
-                    "  <project folder>/style_reference.txt\n"
-                    "  or\n"
-                    "  <project folder>/templates/style_reference.txt\n\n"
-                    "Set the project folder in the Writer AI panel, then try again."
+                    "Place it in your project knowledge folder:\n"
+                    "  <folder>/style_reference.txt\n"
+                    "  or  <folder>/templates/style_reference.txt\n\n"
+                    "Set the folder in the Writer AI panel, then retry."
                     if folder else
                     "No project folder is set.\n\n"
-                    "Set a project knowledge folder in the Writer AI panel first, "
-                    "then add style_reference.txt to it."
+                    "Set a project knowledge folder\n"
+                    "in the Writer AI panel, then add\n"
+                    "style_reference.txt to it."
                 )
+                self._show_popup_error("Script Supervisor — Style Rewrite", msg)
                 return
         self._ss_scene_list = scenes
         self._ss_scene_idx = 0
         self._ss_pending = None
+        self._ss_applied_count = 0
+        self._ss_clean_count = 0
+        self._ss_full_log = [f"SS started — {len(scenes)} scenes, style_rewrite={self._ss_style_rewrite_var.get()}"]
         self._script_supervisor_running = True
         self._at_progress_var.set(0.0)
         if self._script_supervisor_btn:
@@ -2357,7 +2398,16 @@ class FilmPad:
             self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
             if self._script_supervisor_btn:
                 self._script_supervisor_btn.configure(text="\u25b6 Script Supervisor")
-            self._ss_log_var.set(f"Complete \u2014 {total} scene{'s' if total != 1 else ''} reviewed.")
+            _applied = getattr(self, "_ss_applied_count", 0)
+            _clean = getattr(self, "_ss_clean_count", 0)
+            if _applied:
+                _s = "s" if _applied != 1 else ""
+                _summary = f"Done \u2014 {_applied} scene{_s} rewritten, {_clean} unchanged."
+            else:
+                _summary = f"Complete \u2014 {total} scene{'s' if total != 1 else ''} reviewed, all clean."
+            self._ss_log_var.set(_summary)
+            self._ss_full_log.append(_summary)
+            self._ss_full_log.append("--- end of session ---")
             self.writer_ai_status_var.set("Script Supervisor complete.")
             return
         start, end = self._ss_scene_list[idx]
@@ -2366,42 +2416,57 @@ class FilmPad:
         self.text.tag_add(AUTO_TRANSCRIPT_TAG, start, end)
         self.text.see(start)
         scene_text = self.text.get(start, end)
-        # Context windows: last ~400 chars of prev scene, first ~400 of next
-        prev_ctx = ""
-        if idx > 0:
-            p_start, p_end = self._ss_scene_list[idx - 1]
-            prev_full = self.text.get(p_start, p_end)
-            prev_ctx = prev_full[-400:].strip()
-        next_ctx = ""
-        if idx < total - 1:
-            n_start, n_end = self._ss_scene_list[idx + 1]
-            next_full = self.text.get(n_start, n_end)
-            next_ctx = next_full[:400].strip()
-        knowledge = self._read_project_knowledge()
-        parts = [
-            "You are a professional script supervisor reviewing a screenplay.\n"
-            "It was auto-transcribed in blocks and may have artifacts at block boundaries.\n"
-        ]
-        if knowledge:
-            parts.append(f"KNOWLEDGE BASE (names, locations \u2014 reference only, do NOT add content from here):\n{knowledge}\n")
-        if prev_ctx:
-            parts.append(f"PREVIOUS SCENE \u2014 ENDING (context only, do NOT include in output):\n{prev_ctx}\n")
-        parts.append(f"SCENE TO REVIEW:\n{scene_text}\n")
-        if next_ctx:
-            parts.append(f"NEXT SCENE \u2014 OPENING (context only, do NOT include in output):\n{next_ctx}\n")
-        if self._ss_style_rewrite_var.get():
-            parts.append(self._load_custom_prompt("ss_prompt_style.txt", self._SS_STYLE_INSTRUCTIONS_DEFAULT))
-        else:
-            parts.append(self._load_custom_prompt("ss_prompt.txt", self._SS_INSTRUCTIONS_DEFAULT))
         style_ref = self._load_custom_prompt("style_reference.txt", "")
-        if style_ref:
-            parts.append(
-                f"\nREQUIRED OUTPUT STYLE — your output MUST conform to every rule below:\n"
-                f"{'=' * 40}\n{style_ref}\n"
-            )
+        if self._ss_style_rewrite_var.get():
+            # Slim prompt: scene + conservative instruction + style ref only
+            # No knowledge base or context windows — keeps prompt small and focused
+            parts = [
+                "You are a professional screenplay style editor.\n",
+                f"SCENE TO REWRITE:\n{scene_text}\n",
+                self._load_custom_prompt("ss_prompt_style.txt", self._SS_STYLE_INSTRUCTIONS_DEFAULT),
+            ]
+            if style_ref:
+                parts.append(
+                    f"\nREQUIRED OUTPUT STYLE \u2014 conform to every rule below:\n"
+                    f"{'=' * 40}\n{style_ref}\n"
+                )
+        else:
+            # Full prompt for standard SS: knowledge + context windows + scene + instructions
+            prev_ctx = ""
+            if idx > 0:
+                p_start, p_end = self._ss_scene_list[idx - 1]
+                prev_full = self.text.get(p_start, p_end)
+                prev_ctx = prev_full[-400:].strip()
+            next_ctx = ""
+            if idx < total - 1:
+                n_start, n_end = self._ss_scene_list[idx + 1]
+                next_full = self.text.get(n_start, n_end)
+                next_ctx = next_full[:400].strip()
+            knowledge = self._read_project_knowledge()
+            parts = [
+                "You are a professional script supervisor reviewing a screenplay.\n"
+                "It was auto-transcribed in blocks and may have artifacts at block boundaries.\n"
+            ]
+            if knowledge:
+                parts.append(f"KNOWLEDGE BASE (names, locations \u2014 reference only, do NOT add content from here):\n{knowledge}\n")
+            if prev_ctx:
+                parts.append(f"PREVIOUS SCENE \u2014 ENDING (context only, do NOT include in output):\n{prev_ctx}\n")
+            parts.append(f"SCENE TO REVIEW:\n{scene_text}\n")
+            if next_ctx:
+                parts.append(f"NEXT SCENE \u2014 OPENING (context only, do NOT include in output):\n{next_ctx}\n")
+            parts.append(self._load_custom_prompt("ss_prompt.txt", self._SS_INSTRUCTIONS_DEFAULT))
+            if style_ref:
+                parts.append(
+                    f"\nREQUIRED OUTPUT STYLE \u2014 your output MUST conform to every rule below:\n"
+                    f"{'=' * 40}\n{style_ref}\n"
+                )
         prompt = "\n".join(parts)
         model = self.writer_ai_model_var.get().strip()
-        self._ss_log_var.set(f"Scene {idx + 1} / {total}")
+        if self._ss_style_rewrite_var.get():
+            _ref_note = " + style_reference.txt" if style_ref else " — style_reference.txt NOT FOUND"
+            self._ss_log_var.set(f"Scene {idx + 1} / {total}{_ref_note}")
+        else:
+            self._ss_log_var.set(f"Scene {idx + 1} / {total}")
         _pct = min(99.0, idx / max(1, total) * 100)
         self._at_progress_var.set(_pct)
         _start_line = int(start.split(".")[0])
@@ -2436,7 +2501,7 @@ class FilmPad:
             )
             self._writer_ai_process = proc
             try:
-                out, _err = proc.communicate(input=prompt.encode("utf-8"), timeout=180)
+                out, _err = proc.communicate(input=prompt.encode("utf-8"), timeout=360)
                 output = out.decode("utf-8", errors="replace")
             except subprocess.TimeoutExpired:
                 proc.kill()
@@ -2457,32 +2522,49 @@ class FilmPad:
         if not self._script_supervisor_running:
             return
         if returncode != 0 or not output.strip():
+            _msg = f"Scene {scene_num + 1}/{total}: no output (exit code {returncode})"
+            self._ss_log_var.set(_msg)
+            self._ss_full_log.append(_msg)
             self._ss_scene_idx += 1
             self.root.after(400, self._ss_step)
             return
         import difflib
-        proposed = self._sanitize_local_ai_output(output).strip()
-        ratio = difflib.SequenceMatcher(None, original.strip(), proposed).ratio()
-        # Style rewrite mode: apply anything with even tiny differences (only skip
-        # if LLM returned essentially identical text). Standard mode: skip if <11% changed.
-        skip_threshold = 0.99 if self._ss_style_rewrite_var.get() else 0.89
-        if ratio > skip_threshold:
+        try:
+            proposed = self._sanitize_local_ai_output(output).strip()
+            ratio = difflib.SequenceMatcher(None, original.strip(), proposed).ratio()
+            if self._ss_style_rewrite_var.get():
+                # Style rewrite: skip if <1% changed, else auto-apply
+                if ratio > 0.99:
+                    self._ss_clean_count += 1
+                    self._ss_scene_idx += 1
+                    _msg = f"Scene {scene_num + 1}/{total}: unchanged ({ratio:.0%} similar)"
+                    self._ss_log_var.set(_msg)
+                    self._ss_full_log.append(_msg)
+                    self.root.after(400, self._ss_step)
+                    return
+                self._ss_auto_apply(proposed, start, end, scene_num, total, ratio)
+            else:
+                # Standard SS: auto-apply minor fixes (≥89% similar); show comparison for bigger changes (<89%)
+                if ratio >= 0.89:
+                    self._ss_auto_apply(proposed, start, end, scene_num, total, ratio)
+                else:
+                    self._ss_pending = {
+                        "original": original.strip(),
+                        "proposed": proposed,
+                        "start": start, "end": end,
+                        "scene_num": scene_num, "total": total,
+                    }
+                    self._show_ss_comparison()
+        except Exception as exc:
+            _msg = f"Scene {scene_num + 1}/{total}: EXCEPTION — {exc}"
+            self._ss_log_var.set(_msg)
+            self._ss_full_log.append(_msg)
             self._ss_scene_idx += 1
             self.root.after(400, self._ss_step)
-            return
-        if self._ss_style_rewrite_var.get():
-            self._ss_auto_apply(proposed, start, end, scene_num, total)
-            return
-        self._ss_pending = {
-            "original": original.strip(),
-            "proposed": proposed,
-            "start": start, "end": end,
-            "scene_num": scene_num, "total": total,
-        }
-        self._show_ss_comparison()
 
     def _ss_auto_apply(
-        self, proposed: str, start: str, end: str, scene_num: int, total: int
+        self, proposed: str, start: str, end: str, scene_num: int, total: int,
+        ratio: float = 0.0,
     ) -> None:
         """Apply proposed rewrite directly without showing the comparison UI."""
         try:
@@ -2492,10 +2574,60 @@ class FilmPad:
             self._auto_tag_screenplay_block(self.text, start, ins_end)
         except tk.TclError:
             pass
+        self._ss_applied_count += 1
+        pct_changed = int((1.0 - ratio) * 100)
+        _msg = f"Scene {scene_num + 1}/{total}: rewritten ({ratio:.0%} similar, {pct_changed}% changed)"
+        self._ss_log_var.set(_msg)
+        self._ss_full_log.append(_msg)
         self._ss_pending = None
         self._ss_scene_list = self._ss_get_scenes()
         self._ss_scene_idx = scene_num + 1
         self.root.after(300, self._ss_step)
+
+    def _show_popup_error(self, title: str, message: str) -> None:
+        """Custom error dialog that wraps text properly (messagebox hard-wraps mid-word)."""
+        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        win = tk.Toplevel(self.root)
+        win.title(title)
+        win.transient(self.root)
+        win.resizable(True, False)
+        win.minsize(440, 80)
+        win.configure(bg=c["ttk_bg"])
+        frm = ttk.Frame(win, padding=20)
+        frm.pack(fill="both", expand=True)
+        ttk.Label(frm, text=message, wraplength=400, justify="left").pack(anchor="w")
+        ttk.Button(frm, text="OK", command=win.destroy).pack(pady=(16, 0))
+        win.update_idletasks()
+        px = self.root.winfo_x() + (self.root.winfo_width() - win.winfo_width()) // 2
+        py = self.root.winfo_y() + (self.root.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f"+{px}+{py}")
+        win.wait_visibility()
+        win.grab_set()
+        win.focus_set()
+
+    def _show_ss_log_window(self) -> None:
+        """Open a scrollable window showing the full SS session log."""
+        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        win = tk.Toplevel(self.root)
+        win.title("Script Supervisor — Session Log")
+        win.transient(self.root)
+        win.geometry("600x420")
+        win.configure(bg=c["ttk_bg"])
+        frm = ttk.Frame(win, padding=10)
+        frm.pack(fill="both", expand=True)
+        txt = tk.Text(frm, wrap="word", font=("TkFixedFont", 9),
+                      background=c["entry_bg"], foreground=c["ttk_fg"],
+                      relief="flat", borderwidth=0)
+        scr = ttk.Scrollbar(frm, command=txt.yview)
+        txt.configure(yscrollcommand=scr.set)
+        scr.pack(side="right", fill="y")
+        txt.pack(fill="both", expand=True)
+        log_text = ("\n".join(self._ss_full_log)
+                    if self._ss_full_log
+                    else "No log entries yet. Run Script Supervisor first.")
+        txt.insert("1.0", log_text)
+        txt.configure(state="disabled")
+        ttk.Button(frm, text="Close", command=win.destroy).pack(pady=(8, 0))
 
     def _show_ss_comparison(self) -> None:
         item = self._ss_pending
@@ -2662,7 +2794,7 @@ class FilmPad:
         win.protocol("WM_DELETE_WINDOW", lambda: None)
 
         self.root.update_idletasks()
-        w, h = 480, 380
+        w, h = 480, 480
         rx = self.root.winfo_rootx() + self.root.winfo_width() // 2 - w // 2
         ry = self.root.winfo_rooty() + self.root.winfo_height() // 2 - h // 2
         win.geometry(f"{w}x{h}+{rx}+{ry}")
@@ -2720,6 +2852,12 @@ class FilmPad:
         ).pack(fill="x")
         ttk.Label(outer, textvariable=self._progress_detail_var,
                   font=("TkDefaultFont", 8), foreground="#aaa").pack(anchor="w", pady=(3, 0))
+
+        if "script supervisor" in detail.lower():
+            ttk.Separator(outer).pack(fill="x", pady=(10, 4))
+            ttk.Label(outer, textvariable=self._ss_log_var,
+                      font=("TkDefaultFont", 8), foreground="#aaa",
+                      wraplength=430).pack(anchor="w")
 
         self._generation_start_time = time.monotonic()
         self._tick_elapsed_timer()
