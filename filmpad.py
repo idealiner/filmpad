@@ -1668,24 +1668,37 @@ class FilmPad:
     )
 
     _SS_STYLE_INSTRUCTIONS_DEFAULT = (
-        "Apply ONLY the formatting and style rules in REQUIRED OUTPUT STYLE to the SCENE TO REWRITE.\n"
-        "Your task is formatting corrections only. You must not change any words.\n\n"
-        "Permitted corrections:\n"
-        "1. Scene headings: correct capitalisation to ALL CAPS, INT./EXT. LOCATION \u2014 TIME format.\n"
-        "2. Transitions: correct to ALL CAPS ending with colon, on their own line.\n"
-        "3. Character cue lines above dialogue: correct to ALL CAPS.\n"
-        "4. Parentheticals: place on their own line, in parentheses.\n"
-        "5. Apply capitalisation, punctuation, or spacing rules from REQUIRED OUTPUT STYLE.\n\n"
-        "ABSOLUTE RESTRICTIONS \u2014 you must NOT under any circumstances:\n"
-        "- Change, remove, add, or reorder any words in action lines or dialogue.\n"
-        "- Paraphrase, compress, expand, or rephrase any sentence.\n"
-        "- Restructure, split, or merge paragraphs or beats.\n"
-        "- Add or remove story content, characters, events, props, or descriptions.\n"
-        "- Change tense, voice, or perspective.\n"
-        "- Add notes, commentary, annotations, or headings not in the original.\n\n"
-        "If the scene already conforms, return it completely unchanged.\n"
-        "Do NOT explain what you changed.\n"
-        "Output ONLY the scene text, nothing else."
+        "### INSTRUCTIONS — READ CAREFULLY ###\n\n"
+        "OUTPUT: Return ONLY the corrected scene text. No notes. No explanations. No summary.\n"
+        "Do not write anything before or after the scene. Do not describe what you changed.\n\n"
+        "### TASK 1 — DELETE THESE ARTIFACTS ###\n\n"
+        "Find and remove:\n"
+        "- Orphan words/fragments at scene boundaries (block-boundary transcription leftovers)\n"
+        "- Duplicated lines (same line or near-identical sentence appearing twice)\n"
+        "- Technical markers: [END OF BLOCK], [CONTINUED], [inaudible], [transcription note], etc.\n"
+        "- Story development outline text: act sub-labels with structure descriptions\n"
+        "  (e.g. ACT I \u2014 ORDINARY WORLD / INCITING DISTURBANCE, Ordinary World,\n"
+        "  Call to Adventure, 5-ACT STRUCTURE, Purpose:, HERO'S JOURNEY ALIGNMENT,\n"
+        "  numbered outline items like '1. ORDINARY WORLD' and surrounding bullet-point text)\n"
+        "- Editor or production notes embedded in action lines\n"
+        "- Any line that has no story function and is inconsistent with the scene around it\n\n"
+        "RULE: If you are not sure whether something is an artifact \u2014 LEAVE IT.\n"
+        "Only remove what is unambiguously junk with zero story value.\n\n"
+        "EXCEPTION: A clean standalone act header (e.g. ACT ONE or ACT I alone on its own\n"
+        "line) is legitimate \u2014 reformat to ALL CAPS on its own line, do NOT remove it.\n\n"
+        "### TASK 2 \u2014 APPLY FORMATTING FROM REQUIRED OUTPUT STYLE ###\n\n"
+        "1. Scene headings: ALL CAPS, INT./EXT. LOCATION \u2014 TIME\n"
+        "2. Transitions: ALL CAPS, own line, ending with colon (e.g. CUT TO:)\n"
+        "3. Character cue lines above dialogue: ALL CAPS\n"
+        "4. Parentheticals: own line, in parentheses\n"
+        "5. Capitalisation/punctuation per REQUIRED OUTPUT STYLE\n\n"
+        "### NEVER TOUCH ###\n\n"
+        "- Dialogue: do not change a single word any character speaks\n"
+        "- Action lines: do not rephrase, compress, or expand any description\n"
+        "- Story events, props, characters, locations: do not add or remove anything\n"
+        "- Sequence: do not reorder anything\n\n"
+        "### REMINDER ###\n\n"
+        "OUTPUT ONLY THE SCENE TEXT. Nothing else. No notes. No explanations."
     )
 
     _SS_INSTRUCTIONS_DEFAULT = (
@@ -2307,6 +2320,13 @@ class FilmPad:
                 scene_line_set.add(lineno)
         scene_starts = [f"{ln}.0" for ln in sorted(scene_line_set)]
         scenes: list[tuple[str, str]] = []
+        # Preamble: text before the first scene heading (never captured otherwise)
+        if scene_starts:
+            first_line = int(scene_starts[0].split(".")[0])
+            if first_line > 1:
+                pre_end = self.text.index(f"{first_line - 1}.end")
+                if self.text.get("1.0", pre_end).strip():
+                    scenes.append(("1.0", pre_end))
         for i, start in enumerate(scene_starts):
             if i < len(scene_starts) - 1:
                 next_line = int(scene_starts[i + 1].split(".")[0])
@@ -2375,7 +2395,11 @@ class FilmPad:
         self._ss_pending = None
         self._ss_applied_count = 0
         self._ss_clean_count = 0
-        self._ss_full_log = [f"SS started — {len(scenes)} scenes, style_rewrite={self._ss_style_rewrite_var.get()}"]
+        _knowledge_note = ""
+        if self._ss_style_rewrite_var.get():
+            _kb = self._read_project_knowledge()
+            _knowledge_note = f", knowledge={'yes' if _kb else 'none'}"
+        self._ss_full_log = [f"SS started — {len(scenes)} scenes, style_rewrite={self._ss_style_rewrite_var.get()}{_knowledge_note}"]
         self._script_supervisor_running = True
         self._at_progress_var.set(0.0)
         if self._script_supervisor_btn:
@@ -2418,13 +2442,26 @@ class FilmPad:
         scene_text = self.text.get(start, end)
         style_ref = self._load_custom_prompt("style_reference.txt", "")
         if self._ss_style_rewrite_var.get():
-            # Slim prompt: scene + conservative instruction + style ref only
-            # No knowledge base or context windows — keeps prompt small and focused
+            # Include a trimmed knowledge base for name/location reference
+            _kb_raw = self._read_project_knowledge()
+            knowledge_trimmed = _kb_raw[:2000] if _kb_raw else ""
+            # Log what names were found in the knowledge base (first call only)
+            if _kb_raw and self._ss_scene_idx == 0:
+                import re as _re
+                _names = _re.findall(r'\b[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\b', _kb_raw[:1000])
+                _uniq = list(dict.fromkeys(_names))[:8]
+                _kb_detail = ", ".join(_uniq) if _uniq else "(no names found)"
+                self._ss_full_log.append(f"Knowledge base loaded \u2014 {_kb_detail}")
             parts = [
                 "You are a professional screenplay style editor.\n",
                 f"SCENE TO REWRITE:\n{scene_text}\n",
                 self._load_custom_prompt("ss_prompt_style.txt", self._SS_STYLE_INSTRUCTIONS_DEFAULT),
             ]
+            if knowledge_trimmed:
+                parts.append(
+                    f"\nKNOWLEDGE BASE (character names and locations \u2014 reference only, "
+                    f"do NOT add content from here):\n{knowledge_trimmed}\n"
+                )
             if style_ref:
                 parts.append(
                     f"\nREQUIRED OUTPUT STYLE \u2014 conform to every rule below:\n"
@@ -2463,8 +2500,9 @@ class FilmPad:
         prompt = "\n".join(parts)
         model = self.writer_ai_model_var.get().strip()
         if self._ss_style_rewrite_var.get():
-            _ref_note = " + style_reference.txt" if style_ref else " — style_reference.txt NOT FOUND"
-            self._ss_log_var.set(f"Scene {idx + 1} / {total}{_ref_note}")
+            _ref_note = " + style_ref" if style_ref else ""
+            _kb_note = " + knowledge" if knowledge_trimmed else ""
+            self._ss_log_var.set(f"Scene {idx + 1} / {total}{_ref_note}{_kb_note}")
         else:
             self._ss_log_var.set(f"Scene {idx + 1} / {total}")
         _pct = min(99.0, idx / max(1, total) * 100)
@@ -2489,6 +2527,7 @@ class FilmPad:
     def _ss_thread(
         self, model: str, prompt: str,
         original: str, start: str, end: str, scene_num: int, total: int,
+        timeout: int = 360,
     ) -> None:
         import os
         try:
@@ -2501,7 +2540,7 @@ class FilmPad:
             )
             self._writer_ai_process = proc
             try:
-                out, _err = proc.communicate(input=prompt.encode("utf-8"), timeout=360)
+                out, _err = proc.communicate(input=prompt.encode("utf-8"), timeout=timeout)
                 output = out.decode("utf-8", errors="replace")
             except subprocess.TimeoutExpired:
                 proc.kill()
@@ -2530,7 +2569,12 @@ class FilmPad:
             return
         import difflib
         try:
-            proposed = self._sanitize_local_ai_output(output).strip()
+            proposed = self._strip_ss_commentary(
+                self._sanitize_local_ai_output(output).strip()
+            )
+            if self._ss_style_rewrite_var.get():
+                # Enforce content protection: restore any line where words changed
+                proposed = self._ss_protect_content(original.strip(), proposed)
             ratio = difflib.SequenceMatcher(None, original.strip(), proposed).ratio()
             if self._ss_style_rewrite_var.get():
                 # Style rewrite: skip if <1% changed, else auto-apply
@@ -3536,6 +3580,128 @@ class FilmPad:
         self.local_ai_generating = False
         self.root.config(cursor="")
         self.local_ai_status_var.set("Generation cancelled.")
+
+    def _ss_is_character_cue(self, line: str) -> bool:
+        """Return True if line looks like a character cue (ALL CAPS name above dialogue)."""
+        import re
+        s = line.strip()
+        if not s or len(s) > 50:
+            return False
+        # ALL CAPS, optionally followed by (V.O.), (O.S.), (CONT'D), (O.C.) etc.
+        return bool(re.match(r"^[A-Z][A-Z0-9 '\-\.]+(?:\s*\([A-Z\.'/\- ]+\))?$", s))
+
+    def _ss_is_artifact_line(self, line: str) -> bool:
+        """Return True if this line is a known artifact safe to delete."""
+        import re
+        s = line.strip()
+        if not s:
+            return False
+        _ART = re.compile(
+            r"^("
+            r"5-ACT\b|HERO.S JOURNEY|HERO'S JOURNEY"
+            r"|ACT [IVX]+\s*[\u2014\-\u2013/].+"   # "ACT I — ORDINARY WORLD ..."
+            r"|ordinary world|call to adventure|refusal of the call"
+            r"|meeting the mentor|crossing the threshold|ordeal|road back"
+            r"|return with the elixir|reward\b"
+            r"|purpose\s*:"
+            r"|inciting disturbance|inciting incident"
+            r"|\d+\.\s+[A-Z][A-Z\s]+$"             # "1. ORDINARY WORLD"
+            r"|\[end of block\]|\[continued\]|\[inaudible\]"
+            r"|\[transcription|\[scene continues\]|\[cut here\]"
+            r")",
+            re.IGNORECASE,
+        )
+        return bool(_ART.match(s))
+
+    def _ss_is_formatting_only(self, original: str, proposed: str) -> bool:
+        """Return True if proposed differs from original only in capitalisation/punctuation/spacing."""
+        import re
+        def _norm(s: str) -> str:
+            s = re.sub(r"[^\w\s]", " ", s.lower())
+            return re.sub(r"\s+", " ", s).strip()
+        return _norm(original) == _norm(proposed)
+
+    def _ss_protect_content(self, original: str, proposed: str) -> str:
+        """
+        Post-process SS style output so that:
+        - Artifact lines (matched by _ss_is_artifact_line) may be deleted.
+        - Lines that differ only in capitalisation/punctuation/spacing are accepted.
+        - Any other change to an existing line is rejected: the original line is restored.
+        - Lines inserted by the model that have no counterpart are dropped.
+        """
+        import difflib
+        orig_lines = original.splitlines()
+        prop_lines = proposed.splitlines()
+        matcher = difflib.SequenceMatcher(None, orig_lines, prop_lines, autojunk=False)
+        result: list[str] = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                result.extend(prop_lines[j1:j2])
+            elif tag == "delete":
+                # Model wants to remove orig_lines[i1:i2]
+                for ln in orig_lines[i1:i2]:
+                    if not self._ss_is_artifact_line(ln):
+                        result.append(ln)   # restore — not an artifact
+            elif tag == "replace":
+                ob = orig_lines[i1:i2]
+                pb = prop_lines[j1:j2]
+                if len(ob) == len(pb):
+                    for o, p in zip(ob, pb):
+                        if self._ss_is_artifact_line(o):
+                            pass            # allow deletion
+                        elif self._ss_is_formatting_only(o, p):
+                            result.append(p)  # accept formatting fix
+                        else:
+                            result.append(o)  # restore original words
+                else:
+                    # Size mismatch: preserve originals unless known artifacts
+                    for o in ob:
+                        if not self._ss_is_artifact_line(o):
+                            result.append(o)
+            elif tag == "insert":
+                # Allow insertion of character cue lines (formatting fix — missing attribution)
+                for p in prop_lines[j1:j2]:
+                    if self._ss_is_character_cue(p):
+                        result.append(p)
+        return "\n".join(result)
+
+    def _strip_ss_commentary(self, text: str) -> str:
+        """Remove model preamble/commentary lines that are not screenplay content."""
+        import re
+        _COMMENT_RE = re.compile(
+            r"^(note[:\-]|rewritten|below is|here is|i have|the following|summary[:\-]"
+            r"|changes[:\-]|output[:\-]|result[:\-]|scene rewritten|as requested"
+            r"|according to|formatting applied|artifacts removed)",
+            re.IGNORECASE,
+        )
+        lines = text.splitlines()
+        # Strip leading commentary lines (before first screenplay-looking line)
+        _SCREENPLAY_RE = re.compile(
+            r"^(INT\.|EXT\.|I/E\.|INT /|EXT /|[A-Z][A-Z ]+$|[A-Z]{2}|\s*\(|CUT TO|FADE|SMASH|MATCH|DISSOLVE|THE END)"
+        )
+        start = 0
+        for i, ln in enumerate(lines):
+            stripped = ln.strip()
+            if not stripped:
+                continue
+            if _COMMENT_RE.match(stripped):
+                start = i + 1
+            elif _SCREENPLAY_RE.match(stripped):
+                break
+            elif i <= 2 and _COMMENT_RE.match(stripped):
+                start = i + 1
+        # Strip trailing commentary lines
+        end = len(lines)
+        for i in range(len(lines) - 1, start - 1, -1):
+            stripped = lines[i].strip()
+            if not stripped:
+                end = i
+                continue
+            if _COMMENT_RE.match(stripped):
+                end = i
+            else:
+                break
+        return "\n".join(lines[start:end]).strip()
 
     def _sanitize_local_ai_output(self, text: str) -> str:
         replacements = {

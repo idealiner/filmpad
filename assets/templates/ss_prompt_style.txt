@@ -1,21 +1,42 @@
-Apply ONLY the formatting and style rules in REQUIRED OUTPUT STYLE to the SCENE TO REWRITE.
-Your task is formatting corrections only. You must not change any words.
+### INSTRUCTIONS — READ CAREFULLY ###
 
-Permitted corrections:
-1. Scene headings: correct capitalisation to ALL CAPS, INT./EXT. LOCATION — TIME format.
-2. Transitions: correct to ALL CAPS ending with colon, on their own line (e.g. CUT TO:, FADE OUT.).
-3. Character cue lines above dialogue: correct to ALL CAPS.
-4. Parentheticals: place on their own line, in parentheses.
-5. Apply capitalisation, punctuation, or spacing rules from REQUIRED OUTPUT STYLE.
+OUTPUT: Return ONLY the corrected scene text. No notes. No explanations. No summary.
+Do not write anything before or after the scene. Do not describe what you changed.
 
-ABSOLUTE RESTRICTIONS — you must NOT under any circumstances:
-- Change, remove, add, or reorder any words in action lines or dialogue.
-- Paraphrase, compress, expand, or rephrase any sentence.
-- Restructure, split, or merge paragraphs or beats.
-- Add or remove story content, characters, events, props, or descriptions.
-- Change tense, voice, or perspective.
-- Add notes, commentary, annotations, or headings not in the original.
+### TASK 1 — DELETE THESE ARTIFACTS ###
 
-If the scene already conforms, return it completely unchanged.
-Do NOT explain what you changed.
-Output ONLY the scene text, nothing else.
+Find and remove:
+- Orphan words/fragments at scene boundaries (block-boundary transcription leftovers)
+- Duplicated lines (same line or near-identical sentence appearing twice)
+- Technical markers: [END OF BLOCK], [CONTINUED], [inaudible], [transcription note], etc.
+- Story development outline text: act sub-labels with structure descriptions
+  (e.g. "ACT I — ORDINARY WORLD / INCITING DISTURBANCE", "Ordinary World",
+  "Call to Adventure", "5-ACT STRUCTURE", "Purpose:", "HERO'S JOURNEY ALIGNMENT",
+  numbered outline items like "1. ORDINARY WORLD" and surrounding bullet-point text)
+- Editor or production notes embedded in action lines
+- Any line that has no story function and is inconsistent with the scene around it
+
+RULE: If you are not sure whether something is an artifact — LEAVE IT.
+Only remove what is unambiguously junk with zero story value.
+
+EXCEPTION: A clean standalone act header (e.g. "ACT ONE" or "ACT I" alone on its own
+line) is legitimate — reformat to ALL CAPS on its own line, do NOT remove it.
+
+### TASK 2 — APPLY FORMATTING FROM REQUIRED OUTPUT STYLE ###
+
+1. Scene headings: ALL CAPS, INT./EXT. LOCATION — TIME
+2. Transitions: ALL CAPS, own line, ending with colon (e.g. CUT TO:)
+3. Character cue lines above dialogue: ALL CAPS
+4. Parentheticals: own line, in parentheses
+5. Capitalisation/punctuation per REQUIRED OUTPUT STYLE
+
+### NEVER TOUCH ###
+
+- Dialogue: do not change a single word any character speaks
+- Action lines: do not rephrase, compress, or expand any description
+- Story events, props, characters, locations: do not add or remove anything
+- Sequence: do not reorder anything
+
+### REMINDER ###
+
+OUTPUT ONLY THE SCENE TEXT. Nothing else. No notes. No explanations.
