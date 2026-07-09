@@ -229,6 +229,16 @@ class FilmPad:
         self._ss_pending: dict | None = None
         self._ss_style_rewrite_var = tk.BooleanVar(value=False)
         self._sidebar_checkbuttons: list = []  # tk.Checkbutton refs updated in _apply_theme
+        self._accordion_headers: list = []      # (hdr_frame, arrow_lbl, title_lbl) tuples
+        # ── Typewriter Postscript state ──────────────────────────────────
+        self._tp_running = False
+        self._tp_btn: ttk.Button | None = None
+        self._tp_log_var = tk.StringVar(value="")
+        self._tp_full_log: list = []
+        self._tp_scene_list: list[tuple[str, str]] = []
+        self._tp_scene_idx: int = 0
+        self._tp_applied_count: int = 0
+        self._tp_clean_count: int = 0
         self._auto_transcript_block_start: str | None = None
         self._auto_transcript_block_end: str | None = None
 
@@ -418,6 +428,16 @@ class FilmPad:
                 _cb.bind("<Leave>", lambda e, w=_cb, n=_cb_normal_bg: w.configure(bg=n))
             except Exception:
                 pass
+        # Accordion headers
+        for (hdr, arrow_lbl, title_lbl) in getattr(self, "_accordion_headers", []):
+            try:
+                hdr.configure(bg=c["ttk_bg"])
+                arrow_lbl.configure(bg=c["ttk_bg"], fg=c["ttk_fg"])
+                title_lbl.configure(bg=c["ttk_bg"], fg=c["ttk_fg"])
+            except Exception:
+                pass
+        if hasattr(self, "_writer_ai_panel_canvas"):
+            self._writer_ai_panel_canvas.configure(background=c["ttk_bg"])
         # File-dialog and other classic Listbox selection colours
         self.root.option_add("*Listbox.selectBackground", c["sel_bg"])
         self.root.option_add("*Listbox.selectForeground", c["sel_fg"])
@@ -1061,7 +1081,6 @@ class FilmPad:
         _sash_after = [None]
 
         def _enforce_max_wa_width(event=None) -> None:
-            # Debounce: wait for geometry to settle before enforcing
             if _sash_after[0] is not None:
                 self.root.after_cancel(_sash_after[0])
             _sash_after[0] = self.root.after(80, _do_sash_enforce)
@@ -1076,28 +1095,23 @@ class FilmPad:
                 sx = self.editor_frame.sash_coord(0)[0]
                 right_w = total - sx
                 if right_w < 32 or sx >= total:
-                    # Sash off-screen — restore panel to 300px
                     self.editor_frame.sash_place(0, max(0, total - 300), 0)
                 elif right_w > max_wa:
-                    # Panel too wide — cap at 1/3
                     self.editor_frame.sash_place(0, total - max_wa, 0)
             except tk.TclError:
                 pass
 
         self.editor_frame.bind("<Configure>", _enforce_max_wa_width)
         self.root.bind("<Configure>", _enforce_max_wa_width, add="+")
-        self.editor_frame.bind("<ButtonRelease-1>", _do_sash_enforce)  # sash drag end
+        self.editor_frame.bind("<ButtonRelease-1>", _do_sash_enforce)
 
         self._writer_ai_toggle_btn = ttk.Button(
             outer, text="\u25b6", width=3, command=self._toggle_writer_ai_sidebar
         )
         self._writer_ai_toggle_btn.pack(side="top", padx=(4, 4), pady=4)
 
-        # Scrollable container for panel content
         self._writer_ai_panel_container = ttk.Frame(outer)
-        _wa_sb = ttk.Scrollbar(
-            self._writer_ai_panel_container, orient="vertical"
-        )
+        _wa_sb = ttk.Scrollbar(self._writer_ai_panel_container, orient="vertical")
         _wa_sb.pack(side="right", fill="y")
         self._writer_ai_panel_canvas = tk.Canvas(
             self._writer_ai_panel_container,
@@ -1125,22 +1139,61 @@ class FilmPad:
                 scrollregion=self._writer_ai_panel_canvas.bbox("all")
             ),
         )
-        # Start expanded
         self._writer_ai_panel_container.pack(side="top", fill="both", expand=True)
         self._writer_ai_toggle_btn.configure(text="\u25b6")
 
+        # \u2500\u2500 Accordion helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        def _make_acc(title: str, expanded: bool = True) -> ttk.Frame:
+            c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+            wrapper = ttk.Frame(self._writer_ai_content)
+            wrapper.pack(fill="x", pady=(6, 0))
+            hdr = tk.Frame(wrapper, bg=c["ttk_bg"], cursor="hand2")
+            hdr.pack(fill="x")
+            body = ttk.Frame(wrapper, padding=(4, 0, 0, 4))
+            _open = [expanded]
+            _arrow = tk.StringVar(value="\u25bc" if expanded else "\u25b6")
+
+            def _toggle(e=None):
+                _open[0] = not _open[0]
+                if _open[0]:
+                    body.pack(fill="x")
+                    _arrow.set("\u25bc")
+                else:
+                    body.pack_forget()
+                    _arrow.set("\u25b6")
+                self._writer_ai_content.update_idletasks()
+                self._writer_ai_panel_canvas.configure(
+                    scrollregion=self._writer_ai_panel_canvas.bbox("all")
+                )
+
+            arrow_lbl = tk.Label(
+                hdr, textvariable=_arrow, bg=c["ttk_bg"], fg=c["ttk_fg"],
+                font=("TkDefaultFont", 7), cursor="hand2",
+            )
+            arrow_lbl.pack(side="left", padx=(0, 2))
+            arrow_lbl.bind("<Button-1>", _toggle)
+            title_lbl = tk.Label(
+                hdr, text=title, bg=c["ttk_bg"], fg=c["ttk_fg"],
+                font=("TkDefaultFont", 9, "bold"), cursor="hand2", pady=3,
+            )
+            title_lbl.pack(side="left")
+            title_lbl.bind("<Button-1>", _toggle)
+            hdr.bind("<Button-1>", _toggle)
+            self._accordion_headers.append((hdr, arrow_lbl, title_lbl))
+            if expanded:
+                body.pack(fill="x")
+            return body
+
+        # \u2500\u2500 Shared config (always visible) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
         ttk.Label(
             self._writer_ai_content, text="Writer AI", font=("TkDefaultFont", 10, "bold")
         ).pack(anchor="w")
-        ttk.Label(
-            self._writer_ai_content,
-            text="Select text in editor, write a prompt, then generate.",
-            wraplength=240,
-        ).pack(anchor="w", pady=(2, 8))
 
-        ttk.Label(self._writer_ai_content, text="Project knowledge folder").pack(anchor="w")
+        ttk.Label(self._writer_ai_content, text="Project knowledge folder").pack(
+            anchor="w", pady=(6, 0)
+        )
         folder_row = ttk.Frame(self._writer_ai_content)
-        folder_row.pack(fill="x", pady=(2, 6))
+        folder_row.pack(fill="x", pady=(2, 4))
         ttk.Entry(
             folder_row, textvariable=self.writer_ai_project_folder_var, width=26
         ).pack(side="left", fill="x", expand=True)
@@ -1155,70 +1208,62 @@ class FilmPad:
             values=LOCAL_AI_MODELS,
             state="readonly",
             width=28,
-        ).pack(fill="x", pady=(2, 8))
+        ).pack(fill="x", pady=(2, 0))
 
-        ttk.Label(self._writer_ai_content, text="Prompt").pack(anchor="w")
-        prompt_frame = ttk.Frame(self._writer_ai_content)
+        # \u2500\u2500 Accordion 1: Writer AI tools \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        _wa = _make_acc("Writer AI", expanded=True)
+        ttk.Label(
+            _wa,
+            text="Select text in editor, write a prompt, then generate.",
+            wraplength=240, font=("TkDefaultFont", 8),
+        ).pack(anchor="w", pady=(0, 4))
+        ttk.Label(_wa, text="Prompt").pack(anchor="w")
+        prompt_frame = ttk.Frame(_wa)
         prompt_frame.pack(fill="x", pady=(2, 6))
         self.writer_ai_prompt_text = tk.Text(
-            prompt_frame, width=30, height=8, wrap="word", padx=6, pady=6
+            prompt_frame, width=30, height=7, wrap="word", padx=6, pady=6
         )
         prompt_scroll = tk.Scrollbar(prompt_frame, command=self.writer_ai_prompt_text.yview)
         self.writer_ai_prompt_scroll = prompt_scroll
         self.writer_ai_prompt_text.configure(yscrollcommand=prompt_scroll.set)
         prompt_scroll.pack(side="right", fill="y")
         self.writer_ai_prompt_text.pack(side="left", fill="both", expand=True)
-
         ttk.Button(
-            self._writer_ai_content,
-            text="\u2728 Transcribe into Script Format",
+            _wa, text="\u2728 Transcribe into Script Format",
             command=self._transcribe_to_script_format,
         ).pack(fill="x", pady=(2, 0))
         ttk.Button(
-            self._writer_ai_content, text="Edit Selection", command=self._run_writer_ai_edit
+            _wa, text="Edit Selection", command=self._run_writer_ai_edit
         ).pack(fill="x", pady=(4, 0))
         ttk.Button(
-            self._writer_ai_content, text="\u25a7 Review Last Output",
+            _wa, text="\u25a7 Review Last Output",
             command=self._show_writer_ai_comparison,
         ).pack(fill="x", pady=(4, 0))
         ttk.Button(
-            self._writer_ai_content, text="Save", command=self.save_file
+            _wa, text="Save", command=self.save_file
         ).pack(fill="x", pady=(4, 0))
 
-        ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 4))
+        # \u2500\u2500 Accordion 2: Auto Transcript \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        _at = _make_acc("Auto Transcript", expanded=True)
         ttk.Label(
-            self._writer_ai_content,
-            text="Auto Transcript",
-            font=("TkDefaultFont", 9, "bold"),
-        ).pack(anchor="w")
-        ttk.Label(
-            self._writer_ai_content,
+            _at,
             text="Place cursor at start point, then run. Processes the whole document block by block without review.",
-            wraplength=240,
-            font=("TkDefaultFont", 8),
-        ).pack(anchor="w", pady=(2, 4))
+            wraplength=240, font=("TkDefaultFont", 8),
+        ).pack(anchor="w", pady=(0, 4))
         self._auto_transcript_btn = ttk.Button(
-            self._writer_ai_content,
-            text="\u25b6 Auto Transcript",
-            command=self._toggle_auto_transcript,
+            _at, text="\u25b6 Auto Transcript", command=self._toggle_auto_transcript,
         )
-        self._auto_transcript_btn.pack(fill="x", pady=(0, 0))
+        self._auto_transcript_btn.pack(fill="x")
         ttk.Label(
-            self._writer_ai_content,
-            textvariable=self._at_log_var,
-            wraplength=240,
-            font=("TkDefaultFont", 8),
-            foreground="#888888",
+            _at, textvariable=self._at_log_var, wraplength=240,
+            font=("TkDefaultFont", 8), foreground="#888888",
         ).pack(anchor="w", pady=(4, 0))
         self._at_progress_bar = ttk.Progressbar(
-            self._writer_ai_content,
-            variable=self._at_progress_var,
-            mode="determinate",
-            maximum=100,
+            _at, variable=self._at_progress_var, mode="determinate", maximum=100,
         )
         self._at_progress_bar.pack(fill="x", pady=(4, 2))
         _cb1 = tk.Checkbutton(
-            self._writer_ai_content,
+            _at,
             text="Safe mode (smaller steps, slower, more stable)",
             variable=self._auto_transcript_safe_mode_var,
             relief="flat", borderwidth=0, padx=0,
@@ -1226,7 +1271,7 @@ class FilmPad:
         _cb1.pack(anchor="w", padx=0, pady=(4, 0))
         self._sidebar_checkbuttons.append(_cb1)
         _cb2 = tk.Checkbutton(
-            self._writer_ai_content,
+            _at,
             text="Extract knowledge to project folder",
             variable=self._at_extract_knowledge_var,
             relief="flat", borderwidth=0, padx=0,
@@ -1234,27 +1279,20 @@ class FilmPad:
         _cb2.pack(anchor="w", padx=0, pady=(2, 0))
         self._sidebar_checkbuttons.append(_cb2)
 
-        ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 4))
+        # \u2500\u2500 Accordion 3: Script Supervisor \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        _ss = _make_acc("Script Supervisor", expanded=True)
         ttk.Label(
-            self._writer_ai_content,
-            text="Script Supervisor",
-            font=("TkDefaultFont", 9, "bold"),
-        ).pack(anchor="w")
-        ttk.Label(
-            self._writer_ai_content,
+            _ss,
             text="Second-pass review: finds continuity gaps, block artifacts and "
                  "scene inconsistencies. Shows a comparison for each proposed fix.",
-            wraplength=240,
-            font=("TkDefaultFont", 8),
-        ).pack(anchor="w", pady=(2, 4))
+            wraplength=240, font=("TkDefaultFont", 8),
+        ).pack(anchor="w", pady=(0, 4))
         self._script_supervisor_btn = ttk.Button(
-            self._writer_ai_content,
-            text="\u25b6 Script Supervisor",
-            command=self._toggle_script_supervisor,
+            _ss, text="\u25b6 Script Supervisor", command=self._toggle_script_supervisor,
         )
-        self._script_supervisor_btn.pack(fill="x", pady=(0, 0))
+        self._script_supervisor_btn.pack(fill="x")
         _cb3 = tk.Checkbutton(
-            self._writer_ai_content,
+            _ss,
             text="Rewrite to style ref (auto-apply)",
             variable=self._ss_style_rewrite_var,
             relief="flat", borderwidth=0, padx=0,
@@ -1262,26 +1300,43 @@ class FilmPad:
         _cb3.pack(anchor="w", padx=0, pady=(4, 0))
         self._sidebar_checkbuttons.append(_cb3)
         ttk.Label(
-            self._writer_ai_content,
-            textvariable=self._ss_log_var,
-            wraplength=240,
-            font=("TkDefaultFont", 8),
-            foreground="#888888",
+            _ss, textvariable=self._ss_log_var, wraplength=240,
+            font=("TkDefaultFont", 8), foreground="#888888",
         ).pack(anchor="w", pady=(4, 0))
         ttk.Button(
-            self._writer_ai_content,
-            text="View SS Log",
-            command=self._show_ss_log_window,
+            _ss, text="View SS Log", command=self._show_ss_log_window,
         ).pack(fill="x", pady=(4, 0))
 
-        ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 6))
+        # \u2500\u2500 Accordion 4: Typewriter Postscript \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        _tp = _make_acc("Typewriter Postscript", expanded=False)
+        ttk.Label(
+            _tp,
+            text="Final pass: cleans typos, duplicates, artifacts, misformatting "
+                 "and missing character cues across the whole document.",
+            wraplength=240, font=("TkDefaultFont", 8),
+        ).pack(anchor="w", pady=(0, 4))
+        self._tp_btn = ttk.Button(
+            _tp, text="\u25b6 Typewriter Postscript",
+            command=self._toggle_typewriter_postscript,
+        )
+        self._tp_btn.pack(fill="x")
+        ttk.Label(
+            _tp, textvariable=self._tp_log_var, wraplength=240,
+            font=("TkDefaultFont", 8), foreground="#888888",
+        ).pack(anchor="w", pady=(4, 0))
+        ttk.Button(
+            _tp, text="View TP Log", command=self._show_tp_log_window,
+        ).pack(fill="x", pady=(4, 0))
+
+        # \u2500\u2500 Status (always visible) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 4))
         ttk.Label(
             self._writer_ai_content,
             textvariable=self.writer_ai_status_var,
             wraplength=240,
         ).pack(anchor="w")
 
-        # Bind mouse-wheel scrolling for every widget in the panel
+        # Mouse-wheel scrolling (bind recursively to all children)
         def _wa_mw(e: tk.Event) -> None:
             self._writer_ai_panel_canvas.yview_scroll(
                 -1 if (e.num == 4 or getattr(e, "delta", 0) > 0) else 1, "units"
@@ -1299,8 +1354,9 @@ class FilmPad:
         self._writer_ai_panel_canvas.bind("<Button-5>", _wa_mw)
         self._writer_ai_panel_canvas.bind("<MouseWheel>", _wa_mw)
 
-        # Dynamic wraplength: update description labels when panel is resized
+        # Dynamic wraplength \u2014 recurse into accordion bodies
         _refresh_lock = [False]
+
         def _refresh_label_wraps(event=None) -> None:
             if _refresh_lock[0]:
                 return
@@ -1309,11 +1365,21 @@ class FilmPad:
                 return
             new_wrap = max(80, w - 16)
             _refresh_lock[0] = True
-            for child in self._writer_ai_content.winfo_children():
-                if isinstance(child, ttk.Label):
-                    child.configure(wraplength=new_wrap)
+
+            def _recurse(widget: tk.BaseWidget) -> None:
+                if isinstance(widget, (ttk.Label, tk.Label)):
+                    try:
+                        widget.configure(wraplength=new_wrap)
+                    except tk.TclError:
+                        pass
+                for child in widget.winfo_children():
+                    _recurse(child)
+
+            _recurse(self._writer_ai_content)
             _refresh_lock[0] = False
+
         self._writer_ai_content.bind("<Configure>", _refresh_label_wraps, add="+")
+
 
     def _toggle_writer_ai_sidebar(self) -> None:
         total = self.editor_frame.winfo_width()
@@ -1699,6 +1765,28 @@ class FilmPad:
         "- Sequence: do not reorder anything\n\n"
         "### REMINDER ###\n\n"
         "OUTPUT ONLY THE SCENE TEXT. Nothing else. No notes. No explanations."
+    )
+
+    _TP_INSTRUCTIONS_DEFAULT = (
+        "You are doing a final proofreading pass on a screenplay scene.\\n"
+        "Fix ONLY the categories below. OUTPUT ONLY THE CORRECTED SCENE TEXT.\\n\\n"
+        "WHAT TO FIX:\\n"
+        "1. TYPOS/SPELLING: correct obvious misspellings of common words and character names.\\n"
+        "2. DUPLICATES: if the same sentence or line appears twice, remove the second occurrence.\\n"
+        "3. ORPHAN TEXT: remove fragments with no story function at scene boundaries.\\n"
+        "4. MISSING CHARACTER CUES: if a speech has no character name above it, "
+        "add the correct ALL CAPS name based on context.\\n"
+        "5. MISFORMATTED ELEMENTS: scene headings (ALL CAPS, INT./EXT. LOCATION \\u2014 TIME), "
+        "transitions (ALL CAPS, own line, ending colon), character cues (ALL CAPS).\\n"
+        "6. ARTIFACTS: [CONTINUED], [END OF BLOCK], [inaudible] markers and similar.\\n\\n"
+        "DO NOT:\\n"
+        "- Rewrite, rephrase, or expand any sentence\\n"
+        "- Add story content, new characters, or events\\n"
+        "- Change dialogue wording\\n"
+        "- Add notes, commentary, or explanations\\n"
+        "- Remove any line that has story content\\n\\n"
+        "If the scene has no issues, return it completely unchanged.\\n"
+        "OUTPUT ONLY THE SCENE TEXT. Nothing else."
     )
 
     _SS_INSTRUCTIONS_DEFAULT = (
@@ -2528,8 +2616,10 @@ class FilmPad:
         self, model: str, prompt: str,
         original: str, start: str, end: str, scene_num: int, total: int,
         timeout: int = 360,
+        finish_fn=None,
     ) -> None:
         import os
+        _finish = finish_fn if finish_fn is not None else self._ss_finish
         try:
             ollama = shutil.which("ollama") or "ollama"
             env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
@@ -2545,11 +2635,11 @@ class FilmPad:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.communicate()
-                self.root.after(0, self._ss_finish, "", -2, original, start, end, scene_num, total)
+                self.root.after(0, _finish, "", -2, original, start, end, scene_num, total)
                 return
-            self.root.after(0, self._ss_finish, output, proc.returncode, original, start, end, scene_num, total)
+            self.root.after(0, _finish, output, proc.returncode, original, start, end, scene_num, total)
         except Exception:
-            self.root.after(0, self._ss_finish, "", 1, original, start, end, scene_num, total)
+            self.root.after(0, _finish, "", 1, original, start, end, scene_num, total)
 
     def _ss_finish(
         self, output: str, returncode: int,
@@ -2648,6 +2738,195 @@ class FilmPad:
         win.wait_visibility()
         win.grab_set()
         win.focus_set()
+
+    def _show_tp_log_window(self) -> None:
+        """Open a scrollable window showing the full TP session log."""
+        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        win = tk.Toplevel(self.root)
+        win.title("Typewriter Postscript — Session Log")
+        win.transient(self.root)
+        win.geometry("600x420")
+        win.configure(bg=c["ttk_bg"])
+        frm = ttk.Frame(win, padding=10)
+        frm.pack(fill="both", expand=True)
+        txt = tk.Text(frm, wrap="word", font=("TkFixedFont", 9),
+                      background=c["entry_bg"], foreground=c["ttk_fg"],
+                      relief="flat", borderwidth=0)
+        scr = ttk.Scrollbar(frm, command=txt.yview)
+        txt.configure(yscrollcommand=scr.set)
+        scr.pack(side="right", fill="y")
+        txt.pack(fill="both", expand=True)
+        log_text = ("\n".join(self._tp_full_log)
+                    if self._tp_full_log
+                    else "No log entries yet. Run Typewriter Postscript first.")
+        txt.insert("1.0", log_text)
+        txt.configure(state="disabled")
+        ttk.Button(frm, text="Close", command=win.destroy).pack(pady=(8, 0))
+
+    # ── Typewriter Postscript ──────────────────────────────────────────
+
+    def _toggle_typewriter_postscript(self) -> None:
+        if self._tp_running:
+            self._tp_running = False
+            if self._tp_btn:
+                self._tp_btn.configure(text="▶ Typewriter Postscript")
+            self.writer_ai_status_var.set("Typewriter Postscript stopped.")
+            return
+        self._start_typewriter_postscript()
+
+    def _start_typewriter_postscript(self) -> None:
+        if self.writer_ai_generating:
+            at_active = self._auto_transcript_running
+            wa_active = (
+                self._writer_ai_process is not None
+                and self._writer_ai_process.poll() is None
+            )
+            if at_active or wa_active:
+                self.writer_ai_status_var.set("Wait for current generation to finish.")
+                return
+            self.writer_ai_generating = False
+        model = self.writer_ai_model_var.get().strip()
+        if not model:
+            messagebox.showwarning("Typewriter Postscript", "Select a model first.")
+            return
+        if not shutil.which("ollama"):
+            messagebox.showerror(
+                "Typewriter Postscript",
+                "Ollama is not installed or not on PATH.",
+            )
+            return
+        scenes = self._ss_get_scenes()
+        if not scenes:
+            messagebox.showinfo("Typewriter Postscript", "No scenes found to review.")
+            return
+        self._tp_scene_list = scenes
+        self._tp_scene_idx = 0
+        self._tp_applied_count = 0
+        self._tp_clean_count = 0
+        self._tp_full_log = [f"TP started — {len(scenes)} scenes"]
+        self._tp_running = True
+        self._at_progress_var.set(0.0)
+        if self._tp_btn:
+            self._tp_btn.configure(text="⏹ Stop Postscript")
+        self._tp_log_var.set(f"0 / {len(scenes)} scenes")
+        self.writer_ai_status_var.set("Typewriter Postscript starting…")
+        self._tp_step()
+
+    def _tp_step(self) -> None:
+        if not self._tp_running:
+            return
+        if self.writer_ai_generating:
+            self.root.after(600, self._tp_step)
+            return
+        idx = self._tp_scene_idx
+        total = len(self._tp_scene_list)
+        if idx >= total:
+            self._tp_running = False
+            self._at_progress_var.set(100.0)
+            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
+            if self._tp_btn:
+                self._tp_btn.configure(text="▶ Typewriter Postscript")
+            _applied = self._tp_applied_count
+            _clean = self._tp_clean_count
+            if _applied:
+                _s = "s" if _applied != 1 else ""
+                _summary = f"Done — {_applied} scene{_s} cleaned, {_clean} unchanged."
+            else:
+                _summary = f"Complete — {total} scene{'s' if total != 1 else ''} reviewed, all clean."
+            self._tp_log_var.set(_summary)
+            self._tp_full_log.append(_summary)
+            self._tp_full_log.append("--- end of session ---")
+            self.writer_ai_status_var.set("Typewriter Postscript complete.")
+            return
+        start, end = self._tp_scene_list[idx]
+        self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
+        self.text.tag_add(AUTO_TRANSCRIPT_TAG, start, end)
+        self.text.see(start)
+        scene_text = self.text.get(start, end)
+        knowledge = self._read_project_knowledge()
+        parts: list[str] = []
+        if knowledge:
+            parts.append(
+                f"KNOWLEDGE BASE (character names and locations — reference only):"
+                f"\n{knowledge[:2000]}\n"
+            )
+        parts.append(f"SCENE TO REVIEW:\n{scene_text}\n")
+        parts.append(self._load_custom_prompt("tp_prompt.txt", self._TP_INSTRUCTIONS_DEFAULT))
+        prompt = "\n".join(parts)
+        model = self.writer_ai_model_var.get().strip()
+        self._tp_log_var.set(f"Scene {idx + 1} / {total}")
+        _pct = min(99.0, idx / max(1, total) * 100)
+        self._at_progress_var.set(_pct)
+        _start_line = int(start.split(".")[0])
+        _end_line = int(end.split(".")[0])
+        _total_lines = int(self.text.index("end-1c").split(".")[0])
+        self._progress_detail_var.set(
+            f"Postscript {idx + 1} of {total}"
+            f"  —  L{_start_line}–{_end_line} of {_total_lines}"
+        )
+        self.writer_ai_generating = True
+        self._show_writer_ai_progress_overlay(
+            f"Typewriter Postscript — scene {idx + 1}/{total}", model
+        )
+        threading.Thread(
+            target=self._ss_thread,
+            args=(model, prompt, scene_text, start, end, idx, total, 180),
+            kwargs={"finish_fn": self._tp_finish},
+            daemon=True,
+        ).start()
+
+    def _tp_finish(
+        self, output: str, returncode: int,
+        original: str, start: str, end: str, scene_num: int, total: int,
+    ) -> None:
+        self._close_progress_overlay()
+        self.writer_ai_generating = False
+        self._writer_ai_process = None
+        if not self._tp_running:
+            return
+        if returncode != 0 or not output.strip():
+            _msg = f"Scene {scene_num + 1}/{total}: no output (exit code {returncode})"
+            self._tp_log_var.set(_msg)
+            self._tp_full_log.append(_msg)
+            self._tp_scene_idx += 1
+            self.root.after(400, self._tp_step)
+            return
+        import difflib
+        try:
+            proposed = self._strip_ss_commentary(
+                self._sanitize_local_ai_output(output).strip()
+            )
+            proposed = self._ss_protect_content(original.strip(), proposed)
+            ratio = difflib.SequenceMatcher(None, original.strip(), proposed).ratio()
+            if ratio > 0.99:
+                self._tp_clean_count += 1
+                self._tp_scene_idx += 1
+                _msg = f"Scene {scene_num + 1}/{total}: unchanged"
+                self._tp_log_var.set(_msg)
+                self._tp_full_log.append(_msg)
+                self.root.after(300, self._tp_step)
+            else:
+                pct = int((1.0 - ratio) * 100)
+                try:
+                    self.text.delete(start, end)
+                    self.text.insert(start, proposed)
+                    ins_end = self.text.index(f"{start} + {len(proposed)}c")
+                    self._auto_tag_screenplay_block(self.text, start, ins_end)
+                except tk.TclError:
+                    pass
+                self._tp_applied_count += 1
+                _msg = f"Scene {scene_num + 1}/{total}: cleaned ({pct}% changed)"
+                self._tp_log_var.set(_msg)
+                self._tp_full_log.append(_msg)
+                self._tp_scene_list = self._ss_get_scenes()
+                self._tp_scene_idx = scene_num + 1
+                self.root.after(300, self._tp_step)
+        except Exception as exc:
+            _msg = f"Scene {scene_num + 1}/{total}: EXCEPTION — {exc}"
+            self._tp_log_var.set(_msg)
+            self._tp_full_log.append(_msg)
+            self._tp_scene_idx += 1
+            self.root.after(400, self._tp_step)
 
     def _show_ss_log_window(self) -> None:
         """Open a scrollable window showing the full SS session log."""
