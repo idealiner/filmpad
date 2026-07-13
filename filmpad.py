@@ -3200,10 +3200,11 @@ class FilmPad:
             pass
         # Clear undo history and save after every scene to protect against OOM freeze
         self.text.edit_reset()
-        self._silent_save()
+        _saved = self._silent_save()
         self._ss_applied_count += 1
         pct_changed = int((1.0 - ratio) * 100)
-        _msg = f"Scene {scene_num + 1}/{total}: rewritten ({ratio:.0%} similar, {pct_changed}% changed)"
+        _save_note = "  ✓ saved" if _saved else "  ⚠ unsaved"
+        _msg = f"Scene {scene_num + 1}/{total}: rewritten ({ratio:.0%} similar, {pct_changed}% changed){_save_note}"
         self._ss_log_var.set(_msg)
         self._ss_full_log.append(_msg)
         self._ss_pending = None
@@ -3448,9 +3449,10 @@ class FilmPad:
                     pass
                 # Clear undo history and save after every applied scene
                 self.text.edit_reset()
-                self._silent_save()
+                _saved = self._silent_save()
                 self._tp_applied_count += 1
-                _msg = f"Scene {scene_num + 1}/{total}: cleaned ({pct}% changed)"
+                _save_note = "  ✓ saved" if _saved else "  ⚠ unsaved"
+                _msg = f"Scene {scene_num + 1}/{total}: cleaned ({pct}% changed){_save_note}"
                 self._tp_log_var.set(_msg)
                 self._tp_full_log.append(_msg)
                 self._tp_scene_list = self._ss_get_scenes()
@@ -3595,9 +3597,13 @@ class FilmPad:
                 pass
             # Clear undo history and save after every accepted scene
             self.text.edit_reset()
-            self._silent_save()
+            _saved = self._silent_save()
             win.destroy()
             self._ss_pending = None
+            _save_note = "  ✓ saved" if _saved else "  ⚠ unsaved"
+            _msg = f"Scene {item['scene_num'] + 1}/{item['total']}: accepted{_save_note}"
+            self._ss_log_var.set(_msg)
+            self._ss_full_log.append(_msg)
             # Rebuild scene list to account for text changes, then advance
             self._ss_scene_list = self._ss_get_scenes()
             self._ss_scene_idx = item["scene_num"] + 1
