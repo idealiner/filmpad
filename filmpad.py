@@ -431,6 +431,155 @@ class FilmPad:
         )
         self._theme_btn.pack(side="right")
 
+    def _show_about_dialog(self) -> None:
+        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        win = tk.Toplevel(self.root)
+        win.title("About FilmPad")
+        win.transient(self.root)
+        win.resizable(False, False)
+        win.configure(bg=c["ttk_bg"])
+        win.update_idletasks()
+        w, h = 520, 580
+        rx = self.root.winfo_rootx() + (self.root.winfo_width() - w) // 2
+        ry = self.root.winfo_rooty() + (self.root.winfo_height() - h) // 2
+        win.geometry(f"{w}x{h}+{max(0, rx)}+{max(0, ry)}")
+
+        outer = ttk.Frame(win, padding=(28, 24, 28, 20))
+        outer.pack(fill="both", expand=True)
+
+        # Header
+        tk.Label(
+            outer, text="FilmPad", font=("TkDefaultFont", 22, "bold"),
+            bg=c["ttk_bg"], fg=c["ttk_fg"],
+        ).pack(anchor="w")
+        tk.Label(
+            outer,
+            text="Screenplay editor \u2014 local AI assistant \u2014 no cloud",
+            font=("TkDefaultFont", 10),
+            bg=c["ttk_bg"], fg=c["status_fg"],
+        ).pack(anchor="w", pady=(2, 0))
+
+        # Version / date row
+        acc = _get_system_accent_sel_bg() if self._dark_mode else LIGHT_COLORS["sel_bg"]
+        ver_row = tk.Frame(outer, bg=c["ttk_bg"])
+        ver_row.pack(fill="x", pady=(12, 0))
+        tk.Label(
+            ver_row, text="v0.8", font=("TkDefaultFont", 12, "bold"),
+            bg=acc, fg=LIGHT_COLORS["sel_fg"], padx=8, pady=2,
+        ).pack(side="left")
+        tk.Label(
+            ver_row, text="  \u2022  Build 2026-07-12  \u2022  Linux x86_64 AppImage",
+            font=("TkDefaultFont", 9),
+            bg=c["ttk_bg"], fg=c["status_fg"],
+        ).pack(side="left")
+
+        ttk.Separator(outer).pack(fill="x", pady=(14, 10))
+
+        # Scrollable feature list
+        txt_frame = tk.Frame(outer, bg=c["ttk_bg"])
+        txt_frame.pack(fill="both", expand=True)
+        scr = ttk.Scrollbar(txt_frame)
+        scr.pack(side="right", fill="y")
+        txt = tk.Text(
+            txt_frame, wrap="word", font=("TkDefaultFont", 9),
+            background=c["entry_bg"], foreground=c["ttk_fg"],
+            relief="flat", borderwidth=0, padx=10, pady=8,
+            yscrollcommand=scr.set, cursor="arrow",
+        )
+        txt.pack(fill="both", expand=True)
+        scr.configure(command=txt.yview)
+
+        txt.tag_configure("h", font=("TkDefaultFont", 9, "bold"), foreground=acc)
+        txt.tag_configure("bullet", lmargin1=10, lmargin2=20)
+        txt.tag_configure("dim", foreground=c["status_fg"])
+
+        _ABOUT = [
+            ("v0.8 \u2014 AI Pipeline Overhaul  (2026-07-12)", "h", [
+                "Accordion sidebar \u2014 Writer AI / Auto Transcript / Script Supervisor / Typewriter Postscript; all collapsed by default; system accent colour header + border when open",
+                "Typewriter Postscript \u2014 new formatting-only final pass; converts headings, cues and transitions to ALL CAPS industry standard; off-rails guard prevents content deletion",
+                "Script Supervisor hardened \u2014 basic SS prompt locked/hardcoded (no local override); adds missing character cues and mood parentheticals by inference; never invents content",
+                "Content-protection layer \u2014 _ss_protect_content diff filter enforces that surviving lines are never rewritten; only artifact deletions and capitalisation fixes pass through",
+                "Fast pre-screening \u2014 scenes skipped in <50 ms if no detectable issues; timeouts log \u2018timeout \u2014 skipped\u2019 and move on (no more exit-code \u22122 errors)",
+                "SS preamble capture \u2014 text before the first scene heading is now processed and cleaned",
+                "Knowledge base in SS log \u2014 first 8 names from the knowledge base shown on run start",
+                "Panel width widened to 310 px; \u2018Select a function to start.\u2019 hint in always-visible area",
+            ]),
+            ("v0.7.3 \u2014 Script Supervisor: style ref mode  (2026-07-09)", "h", [
+                "Rewrite-to-style-ref (auto-apply) checkbox \u2014 uses style_reference.txt from project folder",
+                "ss_prompt_style.txt local override for style-rewrite pass",
+                "Artifact removal prompt: outline headers, Hero\u2019s Journey labels, block markers deleted; clean ACT I headers reformatted not deleted",
+                "Commentary stripper \u2014 _strip_ss_commentary removes model preamble/notes from output",
+                "Character cue insertion allowed by diff filter (ALL CAPS attribution above dialogue)",
+                "Knowledge base used in style-rewrite mode (first 2000 chars); logged on run start",
+            ]),
+            ("v0.7.1 \u2013 v0.7.2 \u2014 Polish & reliability  (2026-06-28)", "h", [
+                "Centred transitions (CUT TO:, FADE TO: \u2026)",
+                "Script Supervisor comparison button bar always visible; LLM annotations stripped",
+                "Progress detail line: Scene N of T \u2014 LX\u2013Y of Z",
+                "Overlay redesign with Cancel always visible; thicker progress bars",
+                "Sidebar stays open at launch; toggle icons \u25ba / \u25c4",
+            ]),
+            ("v0.7 \u2014 Knowledge Extraction  (2026-06-28)", "h", [
+                "Auto Transcript writes character + location notes to .md files in project folder",
+                "LLM-generated project memory file for long-term context",
+            ]),
+            ("v0.6 \u2014 Script Supervisor  (2026-06-28)", "h", [
+                "Scene-by-scene review with side-by-side comparison (Apply & Next / Skip / Stop)",
+                "Auto Transcript progress bar (shared with Script Supervisor)",
+                "Launcher Tkinter check with distro-specific install hint",
+            ]),
+            ("v0.5 \u2014 Line Numbers & Auto-Save  (2025-06-27)", "h", [
+                "Canvas gutter line numbers synced with scroll",
+                "Auto Transcript block log; auto-save after every block",
+                "doctor.sh diagnostics script",
+            ]),
+            ("v0.2 \u2013 v0.4 \u2014 Foundations", "h", [
+                "Dark theme with system accent colour (Cinnamon/GNOME)",
+                "Writer AI side-by-side comparison pane (editable before accepting)",
+                "Screenplay auto-tagger: Scene Heading, Character, Dialogue, Transition, Action",
+                "Transcribe into Script Format (verbatim strict prompt)",
+                "Project knowledge folder for name/location consistency",
+                "Launch fallback chain; guided first-time setup; desktop error dialogs",
+            ]),
+            ("v0.1 \u2014 Initial release", "h", [
+                "Screenplay editor with format presets",
+                "Local AI tab for prose \u2192 screenplay adaptation",
+                "Spell check, read-aloud (spd-say), font picker",
+                "Linux AppImage",
+            ]),
+        ]
+
+        first = True
+        for title, tag, bullets in _ABOUT:
+            if not first:
+                txt.insert("end", "\n")
+            first = False
+            txt.insert("end", title + "\n", tag)
+            for b in bullets:
+                txt.insert("end", f"  \u2022 {b}\n", "bullet")
+
+        txt.configure(state="disabled")
+
+        ttk.Separator(outer).pack(fill="x", pady=(12, 10))
+
+        # Footer
+        foot = tk.Frame(outer, bg=c["ttk_bg"])
+        foot.pack(fill="x")
+        gh_lbl = tk.Label(
+            foot, text="\U0001f517  github.com/idealiner/filmpad",
+            font=("TkDefaultFont", 9), bg=c["ttk_bg"],
+            fg=acc, cursor="hand2",
+        )
+        gh_lbl.pack(side="left")
+        gh_lbl.bind("<Button-1>", lambda e: __import__("webbrowser").open(
+            "https://github.com/idealiner/filmpad"
+        ))
+        ttk.Button(foot, text="Close", command=win.destroy).pack(side="right")
+
+        win.wait_visibility()
+        win.grab_set()
+        win.focus_set()
+
     def _toggle_dark_mode(self) -> None:
         self._dark_mode = not self._dark_mode
         self._apply_theme()
@@ -922,6 +1071,7 @@ class FilmPad:
         )
         format_menu.add_command(label="Clear Spell Check", command=self._clear_spelling)
         menu_bar.add_cascade(label="Format", menu=format_menu)
+        menu_bar.add_command(label="About", command=self._show_about_dialog)
         self.root.config(menu=menu_bar)
 
         self.root.bind("<Control-n>", lambda _e: self.new_file())
