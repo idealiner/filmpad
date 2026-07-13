@@ -189,6 +189,22 @@ def _split_tts_chunks(text: str, max_chars: int = 220) -> list[str]:
     return [c for c in chunks if c.strip()]
 
 
+def _find_whisper_cpp(exe_path: str = "") -> str | None:
+    """Return the absolute path to a whisper.cpp whisper-cli binary, or None."""
+    candidates: list[str] = []
+    if exe_path:
+        candidates.append(str(Path(exe_path).expanduser()))
+    candidates += [
+        str(Path.home() / ".local/bin/whisper-cli"),
+        str(Path.home() / ".local/share/whisper.cpp/build/bin/whisper-cli"),
+    ]
+    for c in candidates:
+        if Path(c).is_file():
+            return c
+    # Fall back to PATH
+    return shutil.which("whisper-cli")
+
+
 def _load_recent_files() -> list[str]:
     """Return the persisted recent-files list (newest first)."""
     try:
@@ -220,6 +236,19 @@ class FilmPad:
         self._piper_voice_var = tk.StringVar(value="")
         self._tts_speed_var = tk.DoubleVar(value=0.8)
         self._read_btn: ttk.Button | None = None
+        # ── Dictation toolbar refs/vars (must precede _build_toolbar) ───────────────
+        self._dictation_status_var = tk.StringVar(value="")
+        self._dictation_exe_var = tk.StringVar(
+            value=str(Path.home() / ".local/bin/whisper-cli")
+        )
+        self._dictation_model_var = tk.StringVar(
+            value=str(Path.home() / ".local/share/whisper.cpp/models/ggml-tiny.en.bin")
+        )
+        self._dictation_lang_var = tk.StringVar(value="en")
+        self._dictation_device_var = tk.StringVar(value="")
+        self._dictation_start_btn: ttk.Button | None = None
+        self._dictation_stop_btn: ttk.Button | None = None
+        self._dictation_cancel_btn: ttk.Button | None = None
         self.screenplay_font = tkfont.Font(family=self.font_var.get(), size=11)
         self.screenplay_font_bold = tkfont.Font(family=self.font_var.get(), size=11, weight="bold")
         self.screenplay_font_scene = tkfont.Font(family=self.font_var.get(), size=11, weight="bold", underline=True)
@@ -346,6 +375,13 @@ class FilmPad:
         self._tts_thread: threading.Thread | None = None
         self._tts_audio_proc: subprocess.Popen | None = None
         self._tts_widget: tk.Text | None = None
+        # ── Dictation state ───────────────────────────────────────────────
+        self._dictation_recording = False
+        self._dictation_cancelled = False
+        self._dictation_process: subprocess.Popen | None = None
+        self._dictation_tmp_wav: str | None = None
+        self._dictation_cursor_pos: str | None = None
+        self._dictation_target: tk.Text | None = None
 
         self._build_local_ai_workspace()
 
@@ -426,6 +462,38 @@ class FilmPad:
             ).pack(side="left", padx=(0, 2))
             _speed_lbl.pack(side="left", padx=(0, 8))
 
+        if bool(shutil.which("arecord")) and _find_whisper_cpp() is not None:
+            ttk.Separator(self.toolbar, orient="vertical").pack(side="left", fill="y", padx=(14, 10))
+            self._dictation_start_btn = ttk.Button(
+                self.toolbar,
+                text="\U0001f3a4 Dictate",
+                command=self._start_dictation,
+                width=11,
+            )
+            self._dictation_start_btn.pack(side="left")
+            self._dictation_stop_btn = ttk.Button(
+                self.toolbar,
+                text="\u23f9 Stop",
+                command=self._stop_dictation_and_transcribe,
+                width=6,
+                state="disabled",
+            )
+            self._dictation_stop_btn.pack(side="left", padx=(4, 0))
+            self._dictation_cancel_btn = ttk.Button(
+                self.toolbar,
+                text="\u2715 Cancel",
+                command=self._cancel_dictation,
+                width=7,
+                state="disabled",
+            )
+            self._dictation_cancel_btn.pack(side="left", padx=(2, 0))
+            ttk.Label(
+                self.toolbar,
+                textvariable=self._dictation_status_var,
+                foreground="#cc0000",
+                width=5,
+            ).pack(side="left", padx=(6, 0))
+
         ttk.Separator(self.toolbar, orient="vertical").pack(side="right", fill="y", padx=(10, 14))
         self._theme_btn = ttk.Button(
             self.toolbar, text="\U0001f319 Dark", width=8, command=self._toggle_dark_mode
@@ -465,7 +533,7 @@ class FilmPad:
         ver_row = tk.Frame(outer, bg=c["ttk_bg"])
         ver_row.pack(fill="x", pady=(12, 0))
         tk.Label(
-            ver_row, text="v0.8", font=("TkDefaultFont", 12, "bold"),
+            ver_row, text="v0.9", font=("TkDefaultFont", 12, "bold"),
             bg=acc, fg=LIGHT_COLORS["sel_fg"], padx=8, pady=2,
         ).pack(side="left")
         tk.Label(
@@ -495,6 +563,15 @@ class FilmPad:
         txt.tag_configure("dim", foreground=c["status_fg"])
 
         _ABOUT = [
+            ("v0.9 \u2014 Dictation + Stability  (2026-07-13)", "h", [
+                "Speech-to-text dictation at cursor \u2014 whisper.cpp (fully offline, no cloud, no Python packages); \U0001f3a4 Dictate / \u23f9 Stop / \u2715 Cancel toolbar buttons; \u25cf REC indicator",
+                "Dictation Settings accordion \u2014 configurable whisper-cli path, model file (.bin), language, mic device; default ggml-tiny.en.bin; upgrade-compatible with any GGML model",
+                "Dictation hidden when whisper-cli or arecord absent \u2014 matches Read Aloud pattern",
+                "doctor.sh updated \u2014 Section 8 checks arecord, whisper-cli, and model files with install instructions",
+                "Stability: added 5-minute timeout to Writer AI and Auto Transcript ollama calls \u2014 prevents UI freeze if model stalls",
+                "Stability: undo history cleared after each Auto Transcript block \u2014 prevents RAM accumulation over long sessions",
+                "Stability: Auto Transcript now warns and prompts Save before starting if file is unsaved",
+            ]),
             ("v0.8 \u2014 AI Pipeline Overhaul  (2026-07-12)", "h", [
                 "Accordion sidebar \u2014 Writer AI / Auto Transcript / Script Supervisor / Typewriter Postscript; all collapsed by default; system accent colour header + border when open",
                 "Typewriter Postscript \u2014 new formatting-only final pass; converts headings, cues and transitions to ALL CAPS industry standard; off-rails guard prevents content deletion",
@@ -1618,6 +1695,55 @@ class FilmPad:
             _tp, text="View TP Log", command=self._show_tp_log_window,
         ).pack(fill="x", pady=(4, 0))
 
+        # \u2500\u2500 Accordion 5: Dictation Settings \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        _ds = _make_acc("Dictation Settings", expanded=False)
+        ttk.Label(
+            _ds, text="whisper-cli executable",
+            font=("TkDefaultFont", 8, "bold"),
+        ).pack(anchor="w", pady=(0, 2))
+        _exe_row = ttk.Frame(_ds)
+        _exe_row.pack(fill="x")
+        ttk.Entry(_exe_row, textvariable=self._dictation_exe_var).pack(
+            side="left", fill="x", expand=True
+        )
+        ttk.Button(
+            _exe_row, text="...", width=3, command=self._pick_dictation_exe
+        ).pack(side="left", padx=(4, 0))
+
+        ttk.Label(
+            _ds, text="Model file (.bin)",
+            font=("TkDefaultFont", 8, "bold"),
+        ).pack(anchor="w", pady=(6, 2))
+        _model_row = ttk.Frame(_ds)
+        _model_row.pack(fill="x")
+        ttk.Entry(_model_row, textvariable=self._dictation_model_var).pack(
+            side="left", fill="x", expand=True
+        )
+        ttk.Button(
+            _model_row, text="...", width=3, command=self._pick_dictation_model
+        ).pack(side="left", padx=(4, 0))
+
+        _lang_dev_row = ttk.Frame(_ds)
+        _lang_dev_row.pack(fill="x", pady=(6, 0))
+        ttk.Label(_lang_dev_row, text="Language").pack(side="left")
+        ttk.Entry(
+            _lang_dev_row, textvariable=self._dictation_lang_var, width=5
+        ).pack(side="left", padx=(4, 12))
+        ttk.Label(_lang_dev_row, text="Mic device").pack(side="left")
+        ttk.Entry(
+            _lang_dev_row, textvariable=self._dictation_device_var, width=10
+        ).pack(side="left", padx=(4, 0))
+        ttk.Label(
+            _ds,
+            text="Leave Mic device blank for system default (e.g. plughw:1,0 or pulse).",
+            font=("TkDefaultFont", 8), foreground="#888888", wraplength=240,
+        ).pack(anchor="w", pady=(2, 0))
+        ttk.Label(
+            _ds,
+            text="Smallest model: ggml-tiny.en.bin\nUpgrade anytime: ggml-base.en.bin",
+            font=("TkDefaultFont", 8), foreground="#888888", wraplength=240,
+        ).pack(anchor="w", pady=(4, 0))
+
         # \u2500\u2500 Status (always visible) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
         ttk.Separator(self._writer_ai_content).pack(fill="x", pady=(10, 4))
         ttk.Label(
@@ -1822,7 +1948,13 @@ class FilmPad:
                 env=env,
             )
             self._writer_ai_process = proc
-            out, _err = proc.communicate(input=prompt.encode("utf-8"))
+            try:
+                out, _err = proc.communicate(input=prompt.encode("utf-8"), timeout=300)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                self.root.after(0, self._finish_writer_ai_edit, "", 1)
+                return
             output = out.decode("utf-8", errors="replace")
             self.root.after(0, self._finish_writer_ai_edit, output, proc.returncode)
         except Exception:
@@ -2203,6 +2335,18 @@ class FilmPad:
         if self.writer_ai_generating:
             self.writer_ai_status_var.set("Wait for current generation to finish.")
             return
+        # Warn if file is unsaved — auto-save will silently skip each block
+        if not self.current_file:
+            if not messagebox.askyesno(
+                "Auto Transcript — unsaved file",
+                "Your document has not been saved yet.\n\n"
+                "Auto Transcript saves after every block to protect your work.\n"
+                "Without a file path it cannot save anything.\n\n"
+                "Save the file now before starting?",
+            ):
+                return
+            if not self.save_as_file():
+                return
         if not self._confirm_auto_transcript_environment():
             self.writer_ai_status_var.set("Auto transcript cancelled by safety warning.")
             return
@@ -2362,7 +2506,13 @@ class FilmPad:
                 env=env,
             )
             self._auto_transcript_process = proc
-            out, _err = proc.communicate(input=prompt.encode("utf-8"))
+            try:
+                out, _err = proc.communicate(input=prompt.encode("utf-8"), timeout=300)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                self.root.after(0, self._auto_transcript_finish, "", 1)
+                return
             output = out.decode("utf-8", errors="replace")
             self.root.after(0, self._auto_transcript_finish, output, proc.returncode)
         except Exception:
@@ -2403,6 +2553,9 @@ class FilmPad:
             self.text.mark_set("_at_cursor", ins_end)
             self.text.mark_gravity("_at_cursor", "right")
             self.text.see(ins_end)
+            # Clear undo history after each block to prevent RAM accumulation
+            # during long sessions (undo is not useful mid-AT-run anyway)
+            self.text.edit_reset()
             self._auto_transcript_autosave()
             if self._at_extract_knowledge_var.get():
                 self._at_parse_block_for_knowledge(cleaned)
@@ -2762,6 +2915,17 @@ class FilmPad:
                 "Ollama is not installed or not on PATH.\n\nInstall it at https://ollama.com/download\nthen run doctor.sh to verify.",
             )
             return
+        if not self.current_file:
+            if not messagebox.askyesno(
+                "Script Supervisor — unsaved file",
+                "Your document has not been saved yet.\n\n"
+                "Script Supervisor saves after every scene to protect your work.\n"
+                "Without a file path it cannot save anything.\n\n"
+                "Save the file now before starting?",
+            ):
+                return
+            if not self.save_as_file():
+                return
         scenes = self._ss_get_scenes()
         if not scenes:
             messagebox.showinfo("Script Supervisor", "No scenes found to review.")
@@ -3034,6 +3198,9 @@ class FilmPad:
             self._auto_tag_screenplay_block(self.text, start, ins_end)
         except tk.TclError:
             pass
+        # Clear undo history and save after every scene to protect against OOM freeze
+        self.text.edit_reset()
+        self._silent_save()
         self._ss_applied_count += 1
         pct_changed = int((1.0 - ratio) * 100)
         _msg = f"Scene {scene_num + 1}/{total}: rewritten ({ratio:.0%} similar, {pct_changed}% changed)"
@@ -3121,6 +3288,17 @@ class FilmPad:
                 "Ollama is not installed or not on PATH.",
             )
             return
+        if not self.current_file:
+            if not messagebox.askyesno(
+                "Typewriter Postscript — unsaved file",
+                "Your document has not been saved yet.\n\n"
+                "Typewriter Postscript saves after every scene to protect your work.\n"
+                "Without a file path it cannot save anything.\n\n"
+                "Save the file now before starting?",
+            ):
+                return
+            if not self.save_as_file():
+                return
         # Pre-pass: strip scene-card metadata before the TP scene loop if checked
         if self._tp_strip_metadata_var.get():
             _raw = self.text.get("1.0", "end-1c")
@@ -3268,6 +3446,9 @@ class FilmPad:
                     self._auto_tag_screenplay_block(self.text, start, ins_end)
                 except tk.TclError:
                     pass
+                # Clear undo history and save after every applied scene
+                self.text.edit_reset()
+                self._silent_save()
                 self._tp_applied_count += 1
                 _msg = f"Scene {scene_num + 1}/{total}: cleaned ({pct}% changed)"
                 self._tp_log_var.set(_msg)
@@ -3412,6 +3593,9 @@ class FilmPad:
                 self._auto_tag_screenplay_block(self.text, s, ins_end)
             except tk.TclError:
                 pass
+            # Clear undo history and save after every accepted scene
+            self.text.edit_reset()
+            self._silent_save()
             win.destroy()
             self._ss_pending = None
             # Rebuild scene list to account for text changes, then advance
@@ -4201,6 +4385,264 @@ class FilmPad:
             self._speech_process = None
             self._on_tts_finished()
 
+    # \u2500\u2500 Dictation (whisper.cpp at cursor) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+    def _dictation_set_recording(self, active: bool) -> None:
+        """Update toolbar button states to reflect recording state."""
+        self._dictation_recording = active
+        self._dictation_status_var.set("\u25cf REC" if active else "")
+        try:
+            if self._dictation_start_btn is not None:
+                self._dictation_start_btn.configure(
+                    state="disabled" if active else "normal"
+                )
+            if self._dictation_stop_btn is not None:
+                self._dictation_stop_btn.configure(
+                    state="normal" if active else "disabled"
+                )
+            if self._dictation_cancel_btn is not None:
+                self._dictation_cancel_btn.configure(
+                    state="normal" if active else "disabled"
+                )
+        except tk.TclError:
+            pass
+
+    def _start_dictation(self) -> None:
+        if self._dictation_recording:
+            return
+
+        # -- Validate prerequisites --
+        if not shutil.which("arecord"):
+            messagebox.showerror(
+                "Dictation \u2014 missing tool",
+                "arecord is not installed.\n\nFix: sudo apt install alsa-utils",
+            )
+            return
+
+        exe_path = self._dictation_exe_var.get().strip()
+        whisper_exe = _find_whisper_cpp(exe_path)
+        if whisper_exe is None:
+            messagebox.showerror(
+                "Dictation \u2014 missing tool",
+                "whisper-cli not found.\n\n"
+                "FilmPad uses whisper.cpp for local, offline transcription.\n\n"
+                "Install it:\n"
+                "  git clone https://github.com/ggerganov/whisper.cpp\n"
+                "  cd whisper.cpp && cmake -B build && cmake --build build -j\n"
+                "  cp build/bin/whisper-cli ~/.local/bin/\n\n"
+                "Download a model:\n"
+                "  bash models/download-ggml-model.sh tiny.en\n"
+                "  mkdir -p ~/.local/share/whisper.cpp/models\n"
+                "  cp models/ggml-tiny.en.bin ~/.local/share/whisper.cpp/models/",
+            )
+            return
+
+        model_path = str(Path(self._dictation_model_var.get().strip()).expanduser())
+        if not Path(model_path).is_file():
+            messagebox.showerror(
+                "Dictation \u2014 missing model",
+                f"Model file not found:\n{model_path}\n\n"
+                "Download the tiny English model:\n"
+                "  cd whisper.cpp\n"
+                "  bash models/download-ggml-model.sh tiny.en\n"
+                "  mkdir -p ~/.local/share/whisper.cpp/models\n"
+                "  cp models/ggml-tiny.en.bin ~/.local/share/whisper.cpp/models/",
+            )
+            return
+
+        # -- Save insertion target --
+        target = self._active_editor_widget()
+        self._dictation_target = target
+        self._dictation_cursor_pos = target.index(tk.INSERT)
+        self._dictation_cancelled = False
+
+        # -- Create temp WAV file --
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".wav", prefix="filmpad_dictation_", delete=False
+        )
+        tmp.close()
+        self._dictation_tmp_wav = tmp.name
+
+        # -- Build arecord command --
+        device = self._dictation_device_var.get().strip()
+        arecord_cmd = ["arecord", "-f", "S16_LE", "-r", "16000", "-c", "1"]
+        if device:
+            arecord_cmd += ["-D", device]
+        arecord_cmd.append(self._dictation_tmp_wav)
+
+        try:
+            self._dictation_process = subprocess.Popen(
+                arecord_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as exc:
+            messagebox.showerror(
+                "Dictation",
+                f"Microphone recording failed to start:\n{exc}",
+            )
+            try:
+                Path(self._dictation_tmp_wav).unlink(missing_ok=True)
+            except Exception:
+                pass
+            self._dictation_tmp_wav = None
+            return
+
+        self._dictation_set_recording(True)
+
+    def _stop_dictation_and_transcribe(self) -> None:
+        """Stop recording and launch whisper.cpp transcription in a background thread."""
+        if not self._dictation_recording:
+            return
+        self._dictation_set_recording(False)
+
+        proc = self._dictation_process
+        self._dictation_process = None
+        if proc is not None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+
+        wav_path = self._dictation_tmp_wav
+        self._dictation_tmp_wav = None
+        cursor_pos = self._dictation_cursor_pos
+        target = self._dictation_target
+        self._dictation_cursor_pos = None
+        self._dictation_target = None
+
+        if not wav_path or not cursor_pos or target is None:
+            return
+
+        exe_path = self._dictation_exe_var.get().strip()
+        whisper_exe = _find_whisper_cpp(exe_path)
+        model_path = str(Path(self._dictation_model_var.get().strip()).expanduser())
+        lang = self._dictation_lang_var.get().strip() or "en"
+
+        if whisper_exe is None:
+            try:
+                Path(wav_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+            return
+
+        def _run() -> None:
+            transcript = ""
+            error_msg = ""
+            try:
+                result = subprocess.run(
+                    [
+                        whisper_exe,
+                        "-m", model_path,
+                        "-f", wav_path,
+                        "-l", lang,
+                        "-nt",
+                        "-np",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                if result.returncode == 0:
+                    raw = result.stdout.strip()
+                    lines = [ln for ln in raw.splitlines() if not ln.startswith("[")]
+                    transcript = " ".join(ln.strip() for ln in lines if ln.strip())
+                else:
+                    error_msg = (
+                        f"whisper-cli exited with code {result.returncode}.\n"
+                        + (result.stderr.strip()[-400:] if result.stderr else "")
+                    ).strip()
+            except subprocess.TimeoutExpired:
+                error_msg = "Transcription timed out (120 s)."
+            except OSError as exc:
+                error_msg = f"Could not run whisper-cli:\n{exc}"
+            except Exception as exc:
+                error_msg = f"Transcription error:\n{exc}"
+            finally:
+                try:
+                    Path(wav_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+            if self._dictation_cancelled:
+                return
+            if transcript:
+                self.root.after(
+                    0, lambda t=transcript: self._insert_dictation(target, cursor_pos, t)
+                )
+            elif error_msg:
+                self.root.after(
+                    0, lambda m=error_msg: messagebox.showerror("Dictation", m)
+                )
+            else:
+                self.root.after(
+                    0,
+                    lambda: messagebox.showwarning(
+                        "Dictation", "No usable speech was detected in the recording."
+                    ),
+                )
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _cancel_dictation(self) -> None:
+        """Stop recording and discard the audio without transcribing."""
+        if not self._dictation_recording:
+            return
+        self._dictation_cancelled = True
+        self._dictation_set_recording(False)
+
+        proc = self._dictation_process
+        self._dictation_process = None
+        if proc is not None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+
+        wav_path = self._dictation_tmp_wav
+        self._dictation_tmp_wav = None
+        self._dictation_cursor_pos = None
+        self._dictation_target = None
+        try:
+            if wav_path:
+                Path(wav_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    def _insert_dictation(self, target: tk.Text, pos: str, text: str) -> None:
+        """Insert transcript at saved cursor position as one undoable operation."""
+        if not text:
+            return
+        if not text.endswith(" "):
+            text = text + " "
+        target.edit_separator()
+        target.insert(pos, text)
+        target.edit_separator()
+        new_pos = target.index(f"{pos}+{len(text)}c")
+        target.mark_set(tk.INSERT, new_pos)
+        target.see(tk.INSERT)
+
+    def _pick_dictation_exe(self) -> None:
+        path = filedialog.askopenfilename(title="Select whisper-cli executable")
+        if path:
+            self._dictation_exe_var.set(path)
+
+    def _pick_dictation_model(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Select Whisper model (.bin)",
+            filetypes=[("Whisper GGML model", "*.bin"), ("All files", "*")],
+        )
+        if path:
+            self._dictation_model_var.set(path)
     def _pick_local_ai_temp_dir(self) -> None:
         path = filedialog.askdirectory(title="Choose chunks temp folder")
         if path:
@@ -5005,6 +5447,19 @@ class FilmPad:
                 if not self.save_file():
                     return False
         return True
+
+    def _silent_save(self) -> bool:
+        """Save to current_file without showing any dialogs. Returns True on success."""
+        if not self.current_file:
+            return False
+        try:
+            with open(self.current_file, "w", encoding="utf-8") as f:
+                f.write(self.text.get("1.0", "end-1c"))
+            self.text.edit_modified(False)
+            self._set_title()
+            return True
+        except OSError:
+            return False
 
     def new_file(self) -> None:
         if not self._confirm_discard():

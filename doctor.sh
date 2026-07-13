@@ -175,6 +175,85 @@ if [ "$OS" = "Linux" ]; then
     fi
 fi
 
+# ── 8. Dictation: arecord + whisper.cpp ────────────────────────────────────
+echo ""
+echo "── Dictation (speech-to-text) ─────────"
+
+# arecord
+if command -v arecord &>/dev/null; then
+    AREC_VER="$(arecord --version 2>&1 | head -1)"
+    echo "${PASS} arecord  ($AREC_VER)"
+else
+    echo "${FAIL} arecord not found  (\U0001F3A4 Dictate button will be hidden)"
+    if [ "$OS" = "Linux" ]; then
+        echo "     Fix: sudo apt install alsa-utils"
+    fi
+fi
+
+# whisper-cli binary
+WHISPER_CLI=""
+for _p in \
+    "$HOME/.local/bin/whisper-cli" \
+    "$HOME/.local/share/whisper.cpp/build/bin/whisper-cli" \
+    "$(command -v whisper-cli 2>/dev/null || true)"; do
+    if [ -x "$_p" ]; then
+        WHISPER_CLI="$_p"
+        break
+    fi
+done
+
+if [ -n "$WHISPER_CLI" ]; then
+    echo "${PASS} whisper-cli  ($WHISPER_CLI)"
+else
+    echo "${FAIL} whisper-cli not found  (\U0001F3A4 Dictate button will be hidden)"
+    echo ""
+    echo "     To build and install whisper.cpp:"
+    echo "       git clone https://github.com/ggerganov/whisper.cpp"
+    echo "       cd whisper.cpp"
+    echo "       cmake -B build && cmake --build build --config Release -j"
+    echo "       mkdir -p ~/.local/bin"
+    echo "       cp build/bin/whisper-cli ~/.local/bin/"
+fi
+
+# Whisper model files
+WHISPER_MODELS_DIR="$HOME/.local/share/whisper.cpp/models"
+TINY_EN="$WHISPER_MODELS_DIR/ggml-tiny.en.bin"
+BASE_EN="$WHISPER_MODELS_DIR/ggml-base.en.bin"
+
+MODEL_FOUND=""
+for _mf in "$TINY_EN" "$BASE_EN"; do
+    if [ -f "$_mf" ]; then
+        MODEL_FOUND="$_mf"
+        break
+    fi
+done
+
+if [ -n "$MODEL_FOUND" ]; then
+    MODEL_SIZE="$(du -h "$MODEL_FOUND" 2>/dev/null | cut -f1)"
+    echo "${PASS} Model: $(basename "$MODEL_FOUND")  ($MODEL_SIZE)  at $MODEL_FOUND"
+    # Show any additional models
+    while IFS= read -r _m; do
+        [ "$_m" = "$MODEL_FOUND" ] && continue
+        _SZ="$(du -h "$_m" 2>/dev/null | cut -f1)"
+        echo "${INFO} Also found: $(basename "$_m")  ($_SZ)"
+    done < <(find "$WHISPER_MODELS_DIR" -maxdepth 1 -name 'ggml-*.bin' 2>/dev/null | sort)
+else
+    echo "${WARN} No Whisper model found in $WHISPER_MODELS_DIR"
+    echo ""
+    echo "     Smallest model (39 MB):     ggml-tiny.en.bin"
+    echo "     Better accuracy (142 MB):   ggml-base.en.bin"
+    echo ""
+    echo "     Download via whisper.cpp:"
+    echo "       mkdir -p $WHISPER_MODELS_DIR"
+    echo "       cd whisper.cpp"
+    echo "       bash models/download-ggml-model.sh tiny.en"
+    echo "       cp models/ggml-tiny.en.bin $WHISPER_MODELS_DIR/"
+    echo ""
+    echo "     Or direct download:"
+    echo "       wget -P \"$WHISPER_MODELS_DIR\" \\"
+    echo "         https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin"
+fi
+
 # ── Done ───────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════"
