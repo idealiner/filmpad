@@ -28,6 +28,35 @@ If the app does not launch on first try, download and run `doctor.sh` from the t
 
 ## Releases
 
+### v0.9 — Natural Voice Read-Aloud (suggested next release)
+*2026-07-12*
+
+- **Piper TTS integration** — natural-sounding offline text-to-speech using [Piper](https://github.com/rhasspy/piper); streams audio in sentence-sized chunks with double-buffering so the next chunk generates while the current one plays
+- **Voice selector dropdown** — toolbar dropdown lists all voices found in `~/.local/share/piper/voices`; includes `spd-say` fallback entry; dropdown only appears when at least one Piper voice is installed
+- **Speed slider** — `0.5×`–`2.0×` speed control in the toolbar; defaults to `0.8×` for a comfortable listening pace
+- **Play / Stop toggle** — single toolbar button replaces the old separate Play + Stop pair; label updates live between `▶ Read Aloud` and `■ Stop Reading`
+- **Reads from cursor** — reading starts at the current cursor position and continues to end of document; click anywhere in the script and press the button
+- **Sentence karaoke highlight** — the sentence currently being spoken is highlighted in the system accent colour; view auto-scrolls when the highlight reaches the bottom of the viewport
+- **Open Recent menu** — `File → Open Recent` submenu; persists up to 10 files across sessions in `~/.config/filmpad/recent_files.json`; missing files shown disabled; **Clear Recent** entry at the bottom
+
+#### Optional download for v0.9: Piper voice `en_US-ryan-high`
+
+The AppImage ships without voice data. To enable natural voice read-aloud:
+
+```bash
+# 1. Create the Piper environment
+mkdir -p ~/.local/share/piper/voices
+python3 -m venv ~/.local/share/piper/venv
+~/.local/share/piper/venv/bin/pip install piper-tts
+
+# 2. Download the Ryan voice (high quality)
+cd ~/.local/share/piper/voices
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx.json
+```
+
+FilmPad detects the voice on startup — no configuration needed. `spd-say` remains the fallback if Piper is not installed.
+
 ### v0.7.1 — Polish & Reliability
 *2026-06-28*
 
@@ -99,6 +128,13 @@ If the app does not launch on first try, download and run `doctor.sh` from the t
 | **spd-say** | Text-to-speech read-aloud | `sudo apt install speech-dispatcher` |
 
 > The AppImage bundles Python and Tkinter — only Ollama and spd-say need to be installed separately.
+
+### Optional
+
+| Dependency | Purpose | Notes |
+|---|---|---|
+| **[Piper TTS](https://github.com/rhasspy/piper)** | Natural-voice offline read-aloud | See v0.9 release notes for install steps |
+| **aspell** | Spell check | `sudo apt install aspell aspell-en` |
 
 ### Ollama models
 

@@ -100,19 +100,38 @@ else
     fi
 fi
 
-# ── 5. Optional: speech-dispatcher (read-aloud) ────────────────────────
+# ── 5. speech-dispatcher (spd-say) — required for read-aloud ──────────────
 echo ""
-echo "── Read-aloud (optional) ───────────────"
+echo "── Read-aloud: spd-say (required) ─────"
 if command -v spd-say &>/dev/null; then
     echo "${PASS} spd-say available"
 else
-    echo "${WARN} spd-say not found (read-aloud won't work)"
+    echo "${FAIL} spd-say not found  (▶ Read Aloud will not work)"
     if [ "$OS" = "Linux" ]; then
         echo "     Fix: sudo apt install speech-dispatcher"
     fi
 fi
 
-# ── 6. AppImage dependencies (Linux only) ─────────────────────────────
+# ── 6. Piper TTS — optional, natural-voice read-aloud ─────────────────
+echo ""
+echo "── Natural voice TTS: Piper (optional) ─"
+PIPER_PY="$HOME/.local/share/piper/venv/bin/python"
+PIPER_VOICES_DIR="$HOME/.local/share/piper/voices"
+if [ -x "$PIPER_PY" ] && [ -d "$PIPER_VOICES_DIR" ] && ls "$PIPER_VOICES_DIR"/*.onnx &>/dev/null 2>&1; then
+    VOICE_COUNT="$(ls "$PIPER_VOICES_DIR"/*.onnx 2>/dev/null | wc -l)"
+    echo "${PASS} Piper installed  ($VOICE_COUNT voice(s) in $PIPER_VOICES_DIR)"
+else
+    echo "${INFO} Piper not found  (optional — enables natural-sounding offline TTS)"
+    echo "     Suggested voice : en_US-ryan-high"
+    echo "     Install guide   : https://github.com/rhasspy/piper"
+    echo "     Quick setup     :"
+    echo "       mkdir -p ~/.local/share/piper/voices"
+    echo "       python3 -m venv ~/.local/share/piper/venv"
+    echo "       ~/.local/share/piper/venv/bin/pip install piper-tts"
+    echo "       # then drop en_US-ryan-high.onnx + .onnx.json into the voices dir"
+fi
+
+# ── 7. AppImage dependencies (Linux only) ───────────────────────
 if [ "$OS" = "Linux" ]; then
     echo ""
     echo "── AppImage runtime (Linux) ────────────"

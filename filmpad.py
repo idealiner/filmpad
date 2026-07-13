@@ -388,16 +388,20 @@ class FilmPad:
             command=self.apply_screenplay_format,
         ).pack(side="left")
 
-        ttk.Separator(self.toolbar, orient="vertical").pack(side="left", fill="y", padx=(14, 10))
-        self._read_btn = ttk.Button(
-            self.toolbar,
-            text="\u25b6 Read Aloud",
-            command=self._toggle_read_aloud,
-            width=14,
-        )
-        self._read_btn.pack(side="left")
-
         _piper_voices = _detect_piper_voices()
+        _has_spd = bool(shutil.which("spd-say"))
+        _has_tts = _has_spd or bool(_piper_voices)
+
+        if _has_tts:
+            ttk.Separator(self.toolbar, orient="vertical").pack(side="left", fill="y", padx=(14, 10))
+            self._read_btn = ttk.Button(
+                self.toolbar,
+                text="\u25b6 Read Aloud",
+                command=self._toggle_read_aloud,
+                width=14,
+            )
+            self._read_btn.pack(side="left")
+
         if _piper_voices:
             if not self._piper_voice_var.get():
                 self._piper_voice_var.set(_piper_voices[0])
