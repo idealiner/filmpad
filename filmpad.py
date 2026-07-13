@@ -1897,48 +1897,63 @@ class FilmPad:
     )
 
     _TP_INSTRUCTIONS_DEFAULT = (
-        "You are doing a final proofreading pass on a screenplay scene.\\n"
-        "Fix ONLY the categories below. OUTPUT ONLY THE CORRECTED SCENE TEXT.\\n\\n"
-        "WHAT TO FIX:\\n"
-        "1. TYPOS/SPELLING: correct obvious misspellings of common words and character names.\\n"
-        "2. DUPLICATES: if the same sentence or line appears twice, remove the second occurrence.\\n"
-        "3. ORPHAN TEXT: remove fragments with no story function at scene boundaries.\\n"
-        "4. MISSING CHARACTER CUES: if a speech has no character name above it, "
-        "add the correct ALL CAPS name based on context.\\n"
-        "5. MISFORMATTED ELEMENTS: scene headings (ALL CAPS, INT./EXT. LOCATION \\u2014 TIME), "
-        "transitions (ALL CAPS, own line, ending colon), character cues (ALL CAPS).\\n"
-        "6. ARTIFACTS: [CONTINUED], [END OF BLOCK], [inaudible] markers and similar.\\n\\n"
-        "DO NOT:\\n"
-        "- Rewrite, rephrase, or expand any sentence\\n"
-        "- Add story content, new characters, or events\\n"
-        "- Change dialogue wording\\n"
-        "- Add notes, commentary, or explanations\\n"
-        "- Remove any line that has story content\\n\\n"
-        "If the scene has no issues, return it completely unchanged.\\n"
+        "### TYPEWRITER POSTSCRIPT — FORMATTING PASS ONLY ###\n\n"
+        "OUTPUT ONLY THE REFORMATTED SCENE TEXT. No notes. No explanations.\n\n"
+        "Your ONLY job is to apply industry-standard screenplay formatting to the text below.\n"
+        "Do NOT change, add, or remove any words, sentences, or story content.\n\n"
+        "FORMATTING CORRECTIONS TO APPLY:\n\n"
+        "1. SCENE HEADINGS\n"
+        "   Convert to ALL CAPS. Format: INT./EXT. LOCATION \u2014 TIME\n"
+        "   Fix capitalisation and punctuation only. Do not rewrite location or time.\n\n"
+        "2. CHARACTER CUES\n"
+        "   Convert to ALL CAPS on their own line above the dialogue.\n"
+        "   Include extensions in parentheses: (V.O.), (O.S.), (CONT'D).\n\n"
+        "3. TRANSITIONS\n"
+        "   Convert to ALL CAPS on their own line, ending with colon or period:\n"
+        "   CUT TO:  FADE OUT.  DISSOLVE TO:  SMASH CUT TO:  MATCH CUT TO:\n\n"
+        "4. PARENTHETICALS\n"
+        "   Format on their own line, in parentheses, between the character cue and dialogue.\n\n"
+        "5. SCENE HEADING DASHES\n"
+        "   Use em dash (\u2014) between location and time: INT. OFFICE \u2014 DAY\n\n"
+        "NEVER DO:\n"
+        "- Delete any line, sentence, dialogue, or action beat\n"
+        "- Add new words, descriptions, or content not already present\n"
+        "- Change character names, locations, or any story detail\n"
+        "- Reorder scenes, dialogue, or action lines\n"
+        "- Add notes, commentary, or explanations\n\n"
+        "If the scene is already correctly formatted, return it completely unchanged.\n"
         "OUTPUT ONLY THE SCENE TEXT. Nothing else."
     )
 
     _SS_INSTRUCTIONS_DEFAULT = (
-        "Fix ONLY these issues in the SCENE TO REVIEW:\n"
-        "1. Block-boundary artifacts: orphaned words, duplicated lines, "
-        "sentences cut mid-word at the start or end of the scene.\n"
-        "2. Malformed scene headings: should be INT./EXT. LOCATION \u2014 TIME "
-        "in ALL CAPS on their own line. Fix capitalisation and punctuation only \u2014 "
-        "do not rewrite the location or time.\n"
-        "3. Character name inconsistencies: use the knowledge base as ground truth. "
-        "Fix spelling and capitalisation only.\n"
-        "4. Broken dialogue attribution: a speech with no character name above it, "
-        "or the wrong character name \u2014 fix using context and knowledge base.\n"
-        "5. Truncated transitions: CUT TO:, FADE TO:, MATCH CUT TO:, SMASH CUT TO: etc. "
-        "cut off at a block boundary \u2014 restore the full transition label with its colon.\n"
-        "6. Malformed INSERT or BACK TO SCENE labels: fix to ALL CAPS standard form.\n\n"
-        "Do NOT rewrite sentences, restructure action lines, change descriptions, "
-        "add content, or alter meaning in any way.\n"
-        "Do NOT add notes, comments, annotations, parenthetical remarks, "
-        "or any text not present in the original.\n"
-        "Do NOT explain what you changed.\n"
-        "If the scene has no issues, return it unchanged.\n"
-        "Output ONLY the corrected scene text, nothing else."
+        "### SCRIPT SUPERVISOR — CONSERVATIVE REVIEW PASS ###\n\n"
+        "OUTPUT ONLY THE CORRECTED SCENE TEXT. No notes. No explanations.\n\n"
+        "WHAT TO FIX — do only these five things:\n\n"
+        "1. TYPOS / SPELLING\n"
+        "   Correct obvious misspellings of common words only.\n"
+        "   Do NOT change character names, location names, or any proper noun.\n\n"
+        "2. ARTIFACTS\n"
+        "   Delete lines that are transcription/production leftovers with no story value:\n"
+        "   [CONTINUED], [END OF BLOCK], [inaudible], block-boundary orphan fragments,\n"
+        "   structural outline text (ACT I \u2014 ..., Ordinary World, Purpose:, etc.).\n\n"
+        "3. EXACT DUPLICATIONS\n"
+        "   If the same sentence or line appears twice, delete the second occurrence.\n\n"
+        "4. MISSING CHARACTER CUES\n"
+        "   If a line of dialogue has no ALL CAPS character name above it, add the correct\n"
+        "   name inferred from context. Use ONLY names already present in this scene\n"
+        "   or the KNOWLEDGE BASE. Do NOT invent new names.\n\n"
+        "5. MOOD / ACTION PARENTHETICALS\n"
+        "   If a dialogue delivery is ambiguous, add a brief parenthetical on its own line\n"
+        "   inferred from scene context: e.g. (quietly), (to SARAH), (picks up the file).\n"
+        "   Keep them minimal (1-5 words). Do NOT add them if context is already clear.\n\n"
+        "NEVER DO:\n"
+        "- Rewrite, rephrase, or expand any sentence\n"
+        "- Change any character name, location, or story detail\n"
+        "- Add new events, characters, or dialogue\n"
+        "- Remove any line that carries story content\n"
+        "- Add notes, commentary, or explanations\n\n"
+        "If the scene has no issues, return it completely unchanged.\n"
+        "OUTPUT ONLY THE SCENE TEXT. Nothing else."
     )
 
     def _auto_transcript_environment_risks(self) -> list[str]:
@@ -2657,6 +2672,17 @@ class FilmPad:
         self.text.tag_add(AUTO_TRANSCRIPT_TAG, start, end)
         self.text.see(start)
         scene_text = self.text.get(start, end)
+        # Fast pre-screen: skip clean scenes without calling the model
+        if not self._ss_scene_needs_review(scene_text):
+            self._ss_clean_count += 1
+            _pct = min(99.0, (idx + 1) / max(1, total) * 100)
+            self._at_progress_var.set(_pct)
+            _msg = f"Scene {idx + 1}/{total}: clean \u2014 skipped"
+            self._ss_log_var.set(_msg)
+            self._ss_full_log.append(_msg)
+            self._ss_scene_idx += 1
+            self.root.after(30, self._ss_step)
+            return
         style_ref = self._load_custom_prompt("style_reference.txt", "")
         if self._ss_style_rewrite_var.get():
             # Include a trimmed knowledge base for name/location reference
@@ -2708,7 +2734,8 @@ class FilmPad:
             parts.append(f"SCENE TO REVIEW:\n{scene_text}\n")
             if next_ctx:
                 parts.append(f"NEXT SCENE \u2014 OPENING (context only, do NOT include in output):\n{next_ctx}\n")
-            parts.append(self._load_custom_prompt("ss_prompt.txt", self._SS_INSTRUCTIONS_DEFAULT))
+            # Basic SS always uses the hardcoded prompt — no local file override
+            parts.append(self._SS_INSTRUCTIONS_DEFAULT)
             if style_ref:
                 parts.append(
                     f"\nREQUIRED OUTPUT STYLE \u2014 your output MUST conform to every rule below:\n"
@@ -2735,9 +2762,10 @@ class FilmPad:
         self._show_writer_ai_progress_overlay(
             f"Script Supervisor \u2014 scene {idx + 1}/{total}", model
         )
+        _timeout = 120 if self._ss_style_rewrite_var.get() else 90
         threading.Thread(
             target=self._ss_thread,
-            args=(model, prompt, scene_text, start, end, idx, total),
+            args=(model, prompt, scene_text, start, end, idx, total, _timeout),
             daemon=True,
         ).start()
 
@@ -2780,7 +2808,8 @@ class FilmPad:
         if not self._script_supervisor_running:
             return
         if returncode != 0 or not output.strip():
-            _msg = f"Scene {scene_num + 1}/{total}: no output (exit code {returncode})"
+            _code_str = "timeout \u2014 skipped" if returncode == -2 else f"exit code {returncode}"
+            _msg = f"Scene {scene_num + 1}/{total}: no output ({_code_str})"
             self._ss_log_var.set(_msg)
             self._ss_full_log.append(_msg)
             self._ss_scene_idx += 1
@@ -2972,6 +3001,17 @@ class FilmPad:
         self.text.tag_add(AUTO_TRANSCRIPT_TAG, start, end)
         self.text.see(start)
         scene_text = self.text.get(start, end)
+        # Formatting pre-screen: skip scenes already correctly formatted
+        if not self._tp_scene_needs_formatting(scene_text):
+            self._tp_clean_count += 1
+            _pct = min(99.0, (idx + 1) / max(1, total) * 100)
+            self._at_progress_var.set(_pct)
+            _msg = f"Scene {idx + 1}/{total}: formatted \u2014 skipped"
+            self._tp_log_var.set(_msg)
+            self._tp_full_log.append(_msg)
+            self._tp_scene_idx += 1
+            self.root.after(30, self._tp_step)
+            return
         knowledge = self._read_project_knowledge()
         parts: list[str] = []
         if knowledge:
@@ -3014,7 +3054,8 @@ class FilmPad:
         if not self._tp_running:
             return
         if returncode != 0 or not output.strip():
-            _msg = f"Scene {scene_num + 1}/{total}: no output (exit code {returncode})"
+            _code_str = "timeout \u2014 skipped" if returncode == -2 else f"exit code {returncode}"
+            _msg = f"Scene {scene_num + 1}/{total}: no output ({_code_str})"
             self._tp_log_var.set(_msg)
             self._tp_full_log.append(_msg)
             self._tp_scene_idx += 1
@@ -3027,6 +3068,14 @@ class FilmPad:
             )
             proposed = self._ss_protect_content(original.strip(), proposed)
             ratio = difflib.SequenceMatcher(None, original.strip(), proposed).ratio()
+            # Guard: if model changed more than 40% the scene it went off-rails — skip
+            if ratio < 0.60:
+                _msg = f"Scene {scene_num + 1}/{total}: off-rails ({ratio:.0%} similar) \u2014 skipped"
+                self._tp_log_var.set(_msg)
+                self._tp_full_log.append(_msg)
+                self._tp_scene_idx += 1
+                self.root.after(300, self._tp_step)
+                return
             if ratio > 0.99:
                 self._tp_clean_count += 1
                 self._tp_scene_idx += 1
@@ -4204,6 +4253,59 @@ class FilmPad:
         self.local_ai_generating = False
         self.root.config(cursor="")
         self.local_ai_status_var.set("Generation cancelled.")
+
+    def _tp_scene_needs_formatting(self, scene_text: str) -> bool:
+        """True = scene has detectable formatting issues TP should fix.
+        Checks for scene headings, transitions, or character cues not in ALL CAPS."""
+        import re
+        _HEADING = re.compile(r'^\s*(int|ext|i/e)\b', re.IGNORECASE)
+        _TRANS = re.compile(
+            r'^\s*(cut to|fade out|fade in|fade to|dissolve to'
+            r'|smash cut|match cut|wipe to)\b', re.IGNORECASE
+        )
+        # Pattern for lines that look like character cues but aren't ALL CAPS
+        _CUE_LOWER = re.compile(r'^[A-Z][a-z][A-Za-z\s\'\-\.]{0,30}$')
+        for ln in scene_text.splitlines():
+            s = ln.strip()
+            if not s:
+                continue
+            if _HEADING.match(s) and s != s.upper():
+                return True
+            if _TRANS.match(s) and s != s.upper():
+                return True
+            if _CUE_LOWER.match(s):
+                return True
+        return False
+
+    def _ss_scene_needs_review(self, scene_text: str) -> bool:
+        """Fast deterministic pre-screen: True = scene has detectable issues,
+        send to model. False = scene appears clean, skip immediately."""
+        import re
+        lines = [ln for ln in scene_text.splitlines() if ln.strip()]
+        if not lines:
+            return False
+        # Known artifact markers
+        _ART = re.compile(
+            r'\[(?:continued|end of block|inaudible|transcription|scene continues|cut here)\]'
+            r'|5-ACT\b|HERO.S JOURNEY|ordinary world|call to adventure|purpose\s*:'
+            r'|\bACT [IVX]+\s*[\u2014\-/]',
+            re.IGNORECASE,
+        )
+        if any(_ART.search(ln) for ln in lines):
+            return True
+        # Exact duplicate adjacent lines
+        for i in range(len(lines) - 1):
+            if lines[i].strip() and lines[i].strip() == lines[i + 1].strip():
+                return True
+        # Dialogue line (starts with a quote) without ALL CAPS character cue above it
+        _CUE = re.compile(r'^[A-Z][A-Z0-9 \'\-\.]+(?:\s*\([A-Z\.\'/ ]+\))?$')
+        for i, raw in enumerate(lines):
+            s = raw.strip()
+            if s.startswith('"') or s.startswith("'"):
+                prev = lines[i - 1].strip() if i > 0 else ""
+                if not _CUE.match(prev):
+                    return True
+        return False
 
     def _ss_is_character_cue(self, line: str) -> bool:
         """Return True if line looks like a character cue (ALL CAPS name above dialogue)."""

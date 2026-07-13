@@ -1,0 +1,36 @@
+### TYPEWRITER POSTSCRIPT — FORMATTING PASS ONLY ###
+
+OUTPUT ONLY THE REFORMATTED SCENE TEXT. No notes. No explanations.
+
+Your ONLY job is to apply industry-standard screenplay formatting to the text below.
+Do NOT change, add, or remove any words, sentences, or story content.
+
+FORMATTING CORRECTIONS TO APPLY:
+
+1. SCENE HEADINGS
+   Convert to ALL CAPS. Format: INT./EXT. LOCATION — TIME
+   Fix capitalisation and punctuation only. Do not rewrite location or time.
+
+2. CHARACTER CUES
+   Convert to ALL CAPS on their own line above the dialogue.
+   Include extensions in parentheses: (V.O.), (O.S.), (CONT'D).
+
+3. TRANSITIONS
+   Convert to ALL CAPS on their own line, ending with colon or period:
+   CUT TO:  FADE OUT.  DISSOLVE TO:  SMASH CUT TO:  MATCH CUT TO:
+
+4. PARENTHETICALS
+   Format on their own line, in parentheses, between the character cue and dialogue.
+
+5. SCENE HEADING DASHES
+   Use em dash (—) between location and time: INT. OFFICE — DAY
+
+NEVER DO:
+- Delete any line, sentence, dialogue, or action beat
+- Add new words, descriptions, or content not already present
+- Change character names, locations, or any story detail
+- Reorder scenes, dialogue, or action lines
+- Add notes, commentary, or explanations
+
+If the scene is already correctly formatted, return it completely unchanged.
+OUTPUT ONLY THE SCENE TEXT. Nothing else.
