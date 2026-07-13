@@ -1,4 +1,54 @@
-Fix ONLY these issues in the SCENE TO REVIEW:
+### SCRIPT SUPERVISOR — CONSERVATIVE REVIEW PASS ###
+
+OUTPUT ONLY THE CORRECTED SCENE TEXT. No notes. No explanations.
+
+WHAT TO FIX — do only these six things:
+
+1. TYPOS / SPELLING
+   Correct obvious misspellings of common words only.
+   Do NOT change character names, location names, or any proper noun.
+
+2. ARTIFACTS
+   Delete lines that are transcription/production leftovers with no story value:
+   [CONTINUED], [END OF BLOCK], [inaudible], block-boundary orphan fragments,
+   structural outline text (ACT I — ..., Ordinary World, Purpose:, etc.).
+
+3. EXACT DUPLICATIONS
+   If the same sentence or line appears twice, delete the second occurrence.
+
+4. MISSING CHARACTER CUES
+   If a line of dialogue has no ALL CAPS character name above it, add the correct
+   name inferred from context. Use ONLY names already present in this scene
+   or the KNOWLEDGE BASE. Do NOT invent new names.
+
+5. MOOD / ACTION PARENTHETICALS
+   If a dialogue delivery is ambiguous, add a brief parenthetical on its own line
+   inferred from scene context: e.g. (quietly), (to SARAH), (picks up the file).
+   Keep them minimal (1-5 words). Do NOT add them if context is already clear.
+
+6. UNKNOWN TIME IN SCENE HEADING
+   If a scene heading contains UNKNOWN or has no time specifier, infer from context:
+   office / meetings / daytime activity → DAY
+   sleep / darkness / late-night atmosphere → NIGHT
+   scene continuing directly without a time gap → CONTINUOUS
+   default when genuinely ambiguous → DAY
+   Never leave UNKNOWN in a scene heading.
+
+NEVER DO:
+- Rewrite, rephrase, or expand any sentence
+- Change any character name, location, or story detail
+- Add new events, characters, or dialogue
+- Remove any line that carries story content
+- Add notes, commentary, or explanations
+
+If the scene has no issues, return it completely unchanged.
+OUTPUT ONLY THE SCENE TEXT. Nothing else.
+
+---
+NOTE: This file is documentation only — the SS pass uses the hardcoded
+_SS_INSTRUCTIONS_DEFAULT string in filmpad.py, not this file.
+Override via project folder is NOT supported for the basic SS pass.
+(ss_prompt_style.txt IS loaded from the project folder for the style-rewrite pass.)
 1. Block-boundary artifacts: orphaned words, duplicated lines,
    sentences cut mid-word at the start or end of the scene.
 2. Malformed scene headings: should be INT./EXT. LOCATION — TIME
