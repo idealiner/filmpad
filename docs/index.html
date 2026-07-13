@@ -235,7 +235,7 @@
 <body>
   <main class="card">
     <div class="eyebrow">FilmPad &mdash; Linux release</div>
-    <h1>Download v0.7.1</h1>
+    <h1>Download v0.9</h1>
     <p>
       FilmPad is a screenplay editor with a built-in Local AI workspace for adapting prose source text into
       properly formatted screenplay scenes, powered by locally running <a href="https://ollama.com" style="color:var(--accent)">Ollama</a> models &mdash; no cloud, no API key.
@@ -244,7 +244,7 @@
     <section class="meta" aria-label="Release details">
       <div class="stat">
         <span class="stat-label">Version</span>
-        <span class="stat-value">0.7.1</span>
+        <span class="stat-value">0.9</span>
       </div>
       <div class="stat">
         <span class="stat-label">Package</span>
@@ -257,7 +257,7 @@
     </section>
 
     <div class="actions">
-      <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.7.1/FilmPad-v0.7.1-x86_64.AppImage">&#8659; Download AppImage</a>
+      <a class="button primary" href="https://github.com/idealiner/filmpad/releases/download/v0.9/FilmPad-v0.9-x86_64.AppImage">&#8659; Download AppImage</a>
       <a class="button secondary" href="https://raw.githubusercontent.com/idealiner/filmpad/main/doctor.sh">Download doctor.sh</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad">GitHub Repository</a>
       <a class="button secondary" href="https://github.com/idealiner/filmpad/releases">All Releases</a>
@@ -275,58 +275,32 @@
     </section>
 
     <p class="footnote">
-      <code>chmod +x FilmPad-v0.7.1-x86_64.AppImage &amp;&amp; ./FilmPad-v0.7.1-x86_64.AppImage</code>
+      <code>chmod +x FilmPad-v0.9-x86_64.AppImage &amp;&amp; ./FilmPad-v0.9-x86_64.AppImage</code>
     </p>
 
     <p class="footnote">
       <code>chmod +x doctor.sh &amp;&amp; ./doctor.sh</code>
     </p>
 
-    <h2>What&rsquo;s new in v0.7.1</h2>
+    <h2>What&rsquo;s new in v0.9</h2>
     <ul>
-      <li><strong>Centred transitions</strong> &mdash; <code>CUT TO:</code>, <code>FADE TO:</code> and all other Transition blocks are now centred in the script editor</li>
-      <li><strong>Script Supervisor reliability</strong> &mdash; comparison button bar is always visible; LLM output no longer writes annotations, correction notes, or parenthetical remarks into the script</li>
-      <li><strong>Progress detail line</strong> &mdash; overlay shows <em>Scene N of T &mdash; LX&ndash;Y of Z</em> and <em>Block N &mdash; LX&ndash;Y of Z</em> while processing</li>
-      <li><strong>Overlay redesign</strong> &mdash; contextual title derived from current task; thicker progress bars; Cancel button always visible outside the scrollable body</li>
-      <li><strong>Sidebar stays open</strong> &mdash; Writer AI panel opens expanded at launch and no longer collapses on window maximise</li>
-      <li><strong>Toggle icons</strong> &mdash; &rsaquo; when expanded (click to collapse), &lsaquo; when collapsed (click to expand)</li>
-    </ul>
-
-    <h2>What&rsquo;s new in v0.7</h2>
-    <ul>
-      <li><strong>Knowledge extraction</strong> &mdash; Auto Transcript can write character and location notes to <code>.md</code> files in your project folder; a project memory file is also generated via LLM for long-term context</li>
-    </ul>
-
-    <h2>What&rsquo;s new in v0.6</h2>
-    <ul>
-      <li><strong>Script Supervisor</strong> &mdash; second-pass review agent: processes scenes one by one, compares each against adjacent context and the knowledge base, and shows a side-by-side comparison for any proposed clean-up fix (Apply &amp; Next / Skip Scene / Stop)</li>
-      <li><strong>Auto Transcript progress bar</strong> &mdash; determinate progress bar in the Writer AI panel shows how far through the document Auto Transcript (and Script Supervisor) has reached</li>
-      <li><strong>Launcher Tkinter check</strong> &mdash; <code>start-filmpad.sh</code> now detects a missing Tkinter module before the source-run fallback and shows an actionable error dialog with the install command for the current distro</li>
-    </ul>
-
-    <h2>What&rsquo;s new in v0.5</h2>
-    <ul>
-      <li><strong>Line numbers</strong> &mdash; gutter on the left of the writer pad, stays in sync while scrolling via <code>dlineinfo</code></li>
-      <li><strong>Auto Transcript log</strong> &mdash; label shows Started / Block / Position / Last Saved line numbers in real time</li>
-      <li><strong>Auto-save after each block</strong> &mdash; file is silently saved after every completed Auto Transcript block</li>
-      <li><strong>doctor.sh</strong> &mdash; comprehensive system check: Python, Tkinter, Ollama, models, FUSE; terminal stays open after running</li>
-    </ul>
-
-    <h2>What&rsquo;s new in v0.4</h2>
-    <ul>
-      <li><strong>Launch fallback chain</strong> &mdash; launcher now tries AppImage, then dist binary, then source run for maximum reliability</li>
-      <li><strong>Desktop-visible launch errors</strong> &mdash; failed starts show GUI error dialogs with recovery instructions</li>
-      <li><strong>Dependency-first startup checks</strong> &mdash; Python is checked first with distro-specific install hints</li>
-      <li><strong>Guided first-time setup</strong> &mdash; optional installer flow for Ollama, missing models, read-aloud tool, and spellcheck tool</li>
-      <li><strong>Safe missing-Python test mode</strong> &mdash; use <code>FILMPAD_TEST_NO_PYTHON=1</code> to test dependency UX without uninstalling Python</li>
+      <li><strong>Speech-to-text dictation at cursor</strong> &mdash; &#127908; Dictate / &#9209; Stop / &times; Cancel toolbar buttons; records via <code>arecord</code> and transcribes with <a href="https://github.com/ggerganov/whisper.cpp" style="color:var(--accent)">whisper.cpp</a> fully offline; text is inserted at the cursor as one undoable step; hidden automatically if tools are absent</li>
+      <li><strong>Dictation Settings accordion</strong> &mdash; configurable <code>whisper-cli</code> executable path, GGML model file (<code>ggml-tiny.en.bin</code> default), language, and microphone device</li>
+      <li><strong>Auto-save after every scene</strong> &mdash; Script Supervisor and Typewriter Postscript now save silently after each applied scene; log shows <em>&#10003; saved HH:MM:SS</em> or <em>&#9888; unsaved</em> next to each result; sidebar status updates to <em>Script Supervisor &mdash; scene X/Y | saved: HH:MM:SS</em> in real time</li>
+      <li><strong>Save-before-start prompt</strong> &mdash; Auto Transcript, Script Supervisor, and Typewriter Postscript prompt to save the file before starting if no file path is set, so auto-save works from the first block</li>
+      <li><strong>5-minute timeout on all model calls</strong> &mdash; Writer AI, Auto Transcript, Script Supervisor, and Typewriter Postscript all cap each Ollama call at 300&nbsp;s; a stalled model is killed cleanly and the session logs <em>timeout &mdash; skipped</em> rather than freezing the UI indefinitely</li>
+      <li><strong>Undo history cleared after each pipeline scene</strong> &mdash; <code>edit_reset()</code> after every Auto Transcript block and every SS/TP scene keeps RAM usage bounded during long unattended runs</li>
+      <li><strong>doctor.sh Section 8</strong> &mdash; checks <code>arecord</code>, <code>whisper-cli</code>, and GGML model files with sizes and direct download instructions</li>
     </ul>
 
     <h2>Features</h2>
     <ul>
-      <li><strong>Writer tab</strong> &mdash; screenplay editor with format presets (Scene Heading, Action, Character, Dialogue, Parenthetical, Transition), font picker, spell check, and read-aloud</li>
-      <li><strong>Writer AI panel</strong> &mdash; collapsible right-side panel; select text, write a prompt or click &ldquo;Transcribe into Script Format&rdquo;; review output side-by-side before accepting</li>
+      <li><strong>Writer tab</strong> &mdash; screenplay editor with format presets (Scene Heading, Action, Character, Dialogue, Parenthetical, Transition), font picker, spell check, read-aloud, and speech-to-text dictation</li>
+      <li><strong>Auto Transcript</strong> &mdash; block-by-block AI pass that reformats rough prose into screenplay layout; auto-saves after every block; knowledge extraction writes character and location notes to project files</li>
+      <li><strong>Script Supervisor</strong> &mdash; scene-by-scene review agent with content-protection diff filter; auto-applies minor fixes (&ge;89% similar) and shows a side-by-side comparison for larger changes; saves after every scene</li>
+      <li><strong>Script Supervisor + Style</strong> &mdash; rewrites scenes to match a <code>style_reference.txt</code> file while enforcing that no content is invented or removed</li>
+      <li><strong>Typewriter Postscript</strong> &mdash; formatting-only final pass; converts headings, character cues, and transitions to ALL CAPS industry standard; saves after every scene</li>
       <li><strong>Local AI tab</strong> &mdash; split-pane workspace: load a prose source file, set a line range, pick a model, and generate scene-by-scene screenplay adaptations</li>
-      <li><strong>Tab auto-save / live reload</strong> &mdash; switching tabs auto-saves and reloads the active file so both panes stay in sync</li>
       <li>All AI runs locally via Ollama &mdash; no internet required after model download</li>
     </ul>
 
@@ -342,24 +316,26 @@
         </tr>
         <tr>
           <td>An Ollama model</td>
-          <td>e.g. llama3, mistral, phi3</td>
-          <td><code>ollama pull llama3</code></td>
+          <td>e.g. mistral:7b, llama3.1:8b, phi3</td>
+          <td><code>ollama pull mistral:7b</code></td>
         </tr>
         <tr>
           <td>speech-dispatcher</td>
           <td>Read-aloud (<code>spd-say</code>)</td>
           <td><code>sudo apt install speech-dispatcher</code></td>
         </tr>
+        <tr>
+          <td>whisper.cpp + model</td>
+          <td>Offline speech-to-text dictation (optional)</td>
+          <td><a href="https://github.com/ggerganov/whisper.cpp" style="color:var(--accent)">github.com/ggerganov/whisper.cpp</a></td>
+        </tr>
+        <tr>
+          <td>alsa-utils</td>
+          <td>Microphone recording for dictation (<code>arecord</code>)</td>
+          <td><code>sudo apt install alsa-utils</code></td>
+        </tr>
       </table>
     </div>
-
-    <h2>Release Maintainer Checklist</h2>
-    <ul>
-      <li>Build: <code>APPIMAGE_EXTRACT_AND_RUN=1 ./build-appimage.sh</code></li>
-      <li>Checksum: <code>sha256sum FilmPad-v0.4-x86_64.AppImage &gt; FilmPad-v0.4-x86_64.AppImage.sha256</code></li>
-      <li>Upload both files to the GitHub release tag <code>v0.4</code></li>
-      <li>Verify direct download link returns HTTP 200 before announcing the release</li>
-    </ul>
 
     <p class="footnote">
       Source: <a href="https://github.com/idealiner/filmpad" style="color:var(--accent)">github.com/idealiner/filmpad</a> &mdash; MIT licence
