@@ -9,10 +9,15 @@ SOURCE RANGE:
 [Source file and line range]
 
 LOCATION:
-[Use source location only. If missing, write unknown.]
+[Use source location. If not explicitly stated, infer from context (named room, building, or setting described in action). Write Unknown only if no inference is possible.]
 
 TIME:
-[Use source time only. If missing, write unknown.]
+[Use source time if stated. If not stated, infer from scene context:
+- Office, meetings, errands, outdoor activity → DAY
+- Sleep, darkness, late-night atmosphere → NIGHT
+- Scene continuing directly from previous without a time gap → CONTINUOUS
+- Default when genuinely ambiguous: DAY
+Do NOT write Unknown or leave this blank.]
 
 CHARACTERS PRESENT:
 
@@ -50,6 +55,8 @@ Rules:
 ADAPTED SCREENPLAY SCENE:
 
 INT./EXT. LOCATION - DAY/NIGHT
+
+* Never use UNKNOWN in a scene heading. If time cannot be determined from source, use DAY as the default.
 
 Write concise professional screenplay action in present tense.
 

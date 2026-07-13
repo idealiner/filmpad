@@ -12,6 +12,14 @@ Fix ONLY these issues in the SCENE TO REVIEW:
    etc. cut off at a block boundary — restore the full transition label
    with its colon.
 6. Malformed INSERT or BACK TO SCENE labels: fix to ALL CAPS standard form.
+7. Unknown or missing time specifier: if a scene heading contains UNKNOWN,
+   or ends with only a location and no time (e.g. INT. OFFICE), infer the
+   most likely time from the scene content and replace or add accordingly:
+   office / meetings / daytime activity → DAY
+   sleep / darkness / late-night atmosphere → NIGHT
+   scene continuing directly without a time gap → CONTINUOUS
+   default when genuinely ambiguous → DAY
+   Never leave UNKNOWN in a scene heading.
 
 Do NOT rewrite sentences, restructure action lines, change descriptions,
 add content, or alter meaning in any way.

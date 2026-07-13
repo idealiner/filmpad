@@ -310,6 +310,7 @@ class FilmPad:
         self._tp_scene_idx: int = 0
         self._tp_applied_count: int = 0
         self._tp_clean_count: int = 0
+        self._tp_strip_metadata_var = tk.BooleanVar(value=False)
         self._auto_transcript_block_start: str | None = None
         self._auto_transcript_block_end: str | None = None
 
@@ -1037,6 +1038,8 @@ class FilmPad:
         file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
         file_menu.add_command(label="Save As...", command=self.save_as_file)
         file_menu.add_separator()
+        file_menu.add_command(label="Strip Scene Card Metadata", command=self._strip_scene_card_metadata)
+        file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.on_exit)
 
         format_menu = tk.Menu(menu_bar, tearoff=0)
@@ -1599,6 +1602,14 @@ class FilmPad:
             command=self._toggle_typewriter_postscript,
         )
         self._tp_btn.pack(fill="x")
+        _cb_tp = tk.Checkbutton(
+            _tp,
+            text="Strip card metadata first",
+            variable=self._tp_strip_metadata_var,
+            relief="flat", borderwidth=0, padx=0,
+        )
+        _cb_tp.pack(anchor="w", padx=0, pady=(4, 0))
+        self._sidebar_checkbuttons.append(_cb_tp)
         ttk.Label(
             _tp, textvariable=self._tp_log_var, wraplength=240,
             font=("TkDefaultFont", 8), foreground="#888888",
@@ -3103,6 +3114,14 @@ class FilmPad:
                 "Ollama is not installed or not on PATH.",
             )
             return
+        # Pre-pass: strip scene-card metadata before the TP scene loop if checked
+        if self._tp_strip_metadata_var.get():
+            _raw = self.text.get("1.0", "end-1c")
+            _clean = self._clean_scene_card_metadata(_raw)
+            if _clean != _raw.strip():
+                self.text.delete("1.0", tk.END)
+                self.text.insert("1.0", _clean)
+                self.text.edit_modified(True)
         scenes = self._ss_get_scenes()
         if not scenes:
             messagebox.showinfo("Typewriter Postscript", "No scenes found to review.")
@@ -4323,8 +4342,8 @@ class FilmPad:
             "  - ASCII punctuation only.\n\n"
             "RULE D -- LOCATION field:\n"
             "  - Use the location explicitly stated or clearly implied in the source.\n"
-            "  - If genuinely unknowable, write: UNKNOWN\n"
-            "  - NEVER write: Unknown (place name).\n\n"
+            "  - If not stated, infer from context (room, building, setting described).\n"
+            "  - Only write UNKNOWN if no inference is possible.\n\n"
             "RULE E -- NOTES field:\n"
             "  - List only actual changes made in this output.\n"
             "  - Do not generalise or invent examples not present in the source.\n"
@@ -4634,6 +4653,45 @@ class FilmPad:
                 break
         return "\n".join(lines[start:end]).strip()
 
+    @staticmethod
+    def _clean_scene_card_metadata(content: str) -> str:
+        """Core strip logic: remove scene-card metadata fields and return cleaned text."""
+        _META = re.compile(
+            r"^(SCENE NUMBER|SOURCE RANGE|LOCATION|TIME|CHARACTERS PRESENT"
+            r"|SITUATIONAL CUES PRESENT|SOURCE DIALOGUE INSIDE THIS SCENE"
+            r"|ADAPTED SCREENPLAY SCENE|NOTES|CONFIDENCE):[ \t]*.*$",
+            re.MULTILINE,
+        )
+        cleaned = _META.sub("", content)
+        cleaned = re.sub(r"(?m)^\d+\s*$", "", cleaned)
+        cleaned = re.sub(r"(?m)^.+\.md\s*-\s*Lines\s*\d+.*$", "", cleaned)
+        cleaned = re.sub(r"(?m)^[ \t]*[-*][ \t]+.+$", "", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned.strip()
+
+    def _strip_scene_card_metadata(self) -> None:
+        """Menu action: strip scene-card metadata from the current document."""
+        content = self.text.get("1.0", "end-1c")
+        if not any(marker in content for marker in (
+            "SCENE NUMBER:", "SOURCE RANGE:", "CHARACTERS PRESENT:",
+            "SITUATIONAL CUES PRESENT:", "SOURCE DIALOGUE INSIDE THIS SCENE:",
+            "ADAPTED SCREENPLAY SCENE:",
+        )):
+            messagebox.showinfo("Strip Metadata", "No scene-card metadata found in this document.")
+            return
+        cleaned = self._clean_scene_card_metadata(content)
+        if cleaned == content.strip():
+            messagebox.showinfo("Strip Metadata", "Nothing to strip \u2014 document unchanged.")
+            return
+        removed = len(content) - len(cleaned)
+        self.text.delete("1.0", tk.END)
+        self.text.insert("1.0", cleaned)
+        self.text.edit_modified(True)
+        messagebox.showinfo(
+            "Strip Metadata",
+            f"Done. Removed approximately {removed} characters of scene-card metadata.",
+        )
+
     def _sanitize_local_ai_output(self, text: str) -> str:
         replacements = {
             "â€”": "-",
@@ -4668,6 +4726,46 @@ class FilmPad:
         # Exact word repeated at line break: "with\nwith rest" -> "with rest"
         cleaned = re.sub(r"\b(\w+) *\n\1\b", r"\1", cleaned)
         return cleaned.strip("\n") + "\n"
+
+    def _extract_screenplay_scenes(self, text: str) -> str:
+        """Strip scene-card metadata; return only the ADAPTED SCREENPLAY SCENE content.
+
+        Works on output that contains one or more scene cards in the template format
+        (SCENE NUMBER / SOURCE RANGE / ... / ADAPTED SCREENPLAY SCENE: / NOTES:).
+        If no card markers are found the text is returned unchanged.
+        """
+        if "ADAPTED SCREENPLAY SCENE:" not in text:
+            return text
+
+        scenes: list[str] = []
+        # Split on SCENE NUMBER: to isolate individual cards
+        cards = re.split(r"(?m)^SCENE NUMBER:", text)
+        for card in cards:
+            m = re.search(
+                r"ADAPTED SCREENPLAY SCENE:\s*\n(.*?)(?=\n(?:NOTES:|SCENE NUMBER:)|\Z)",
+                card, re.DOTALL,
+            )
+            if m:
+                scene_text = m.group(1).strip()
+                if scene_text:
+                    scenes.append(scene_text)
+
+        if scenes:
+            return "\n\n".join(scenes) + "\n"
+
+        # Fallback: couldn't isolate cards cleanly — strip known metadata field headers
+        # and any indented bullet lists that belong to metadata sections.
+        _META_HEADERS = re.compile(
+            r"^(SCENE NUMBER|SOURCE RANGE|LOCATION|TIME|CHARACTERS PRESENT"
+            r"|SITUATIONAL CUES PRESENT|SOURCE DIALOGUE INSIDE THIS SCENE"
+            r"|ADAPTED SCREENPLAY SCENE|NOTES|CONFIDENCE):.*$",
+            re.MULTILINE,
+        )
+        cleaned = _META_HEADERS.sub("", text)
+        # Remove bare bullet lines that are metadata lists (not screenplay action)
+        cleaned = re.sub(r"(?m)^[ \t]*[-*][ \t]+.+$", "", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned.strip() + "\n"
 
     def _generate_local_ai_adaptation(self) -> None:
         if self.local_ai_generating:
@@ -4778,6 +4876,7 @@ class FilmPad:
         self._update_progress_step(3, "Processing output")
 
         cleaned_output = self._sanitize_local_ai_output(output)
+        cleaned_output = self._extract_screenplay_scenes(cleaned_output)
         # If the user had a selection in the result pane, replace it; otherwise insert at cursor
         if self.local_ai_replace_range:
             sel_start, sel_end = self.local_ai_replace_range
