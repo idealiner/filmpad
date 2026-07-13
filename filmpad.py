@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import json
 import re
 import shlex
 import shutil
@@ -86,6 +87,13 @@ _ACCENT_PALETTE: dict[str, str] = {
     "gray":   "#3a4a5a",
 }
 
+# ── Piper TTS ──────────────────────────────────────────────────────────────
+_PIPER_PYTHON = Path.home() / ".local/share/piper/venv/bin/python"
+_PIPER_VOICES_DIR = Path.home() / ".local/share/piper/voices"
+
+# ── Recent files ──────────────────────────────────────────────────────────
+_RECENT_FILE = Path.home() / ".config/filmpad/recent_files.json"
+
 
 def _get_system_accent_sel_bg() -> str:
     """Return a selection-background hex colour that matches the system accent.
@@ -140,6 +148,64 @@ def _get_system_accent_sel_bg() -> str:
     return _ACCENT_PALETTE["blue"]
 
 
+def _detect_piper_voices() -> list[str]:
+    """Return sorted list of Piper voice names found in _PIPER_VOICES_DIR."""
+    d = _PIPER_VOICES_DIR
+    if not d.is_dir():
+        return []
+    return sorted(
+        p.stem for p in d.glob("*.onnx")
+        if (d / (p.stem + ".onnx.json")).exists()
+    )
+
+
+def _split_tts_chunks(text: str, max_chars: int = 220) -> list[str]:
+    """Split text on sentence boundaries into chunks of roughly max_chars."""
+    parts = re.split(r"(?<=[.!?\u2026])\s+", text.strip())
+    chunks: list[str] = []
+    current = ""
+    for part in parts:
+        candidate = (current + " " + part).strip() if current else part
+        if len(candidate) <= max_chars:
+            current = candidate
+        else:
+            if current:
+                chunks.append(current)
+            if len(part) > max_chars:
+                words = part.split()
+                current = ""
+                for w in words:
+                    test = (current + " " + w).strip()
+                    if len(test) <= max_chars:
+                        current = test
+                    else:
+                        if current:
+                            chunks.append(current)
+                        current = w
+            else:
+                current = part
+    if current:
+        chunks.append(current)
+    return [c for c in chunks if c.strip()]
+
+
+def _load_recent_files() -> list[str]:
+    """Return the persisted recent-files list (newest first)."""
+    try:
+        return json.loads(_RECENT_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+
+
+def _save_recent_files(paths: list[str]) -> None:
+    """Write the recent-files list to disk."""
+    try:
+        _RECENT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _RECENT_FILE.write_text(json.dumps(paths, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
 class FilmPad:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -151,11 +217,16 @@ class FilmPad:
         self.available_fonts = self._available_screenplay_fonts()
         self.font_var = tk.StringVar(value=self.available_fonts[0])
         self.format_var = tk.StringVar(value="Action")
+        self._piper_voice_var = tk.StringVar(value="")
+        self._tts_speed_var = tk.DoubleVar(value=0.8)
+        self._read_btn: ttk.Button | None = None
         self.screenplay_font = tkfont.Font(family=self.font_var.get(), size=11)
         self.screenplay_font_bold = tkfont.Font(family=self.font_var.get(), size=11, weight="bold")
         self.screenplay_font_scene = tkfont.Font(family=self.font_var.get(), size=11, weight="bold", underline=True)
 
         self.current_file = None
+        self._recent_files: list[str] = _load_recent_files()
+        self._recent_menu: tk.Menu | None = None
 
         self.toolbar = ttk.Frame(root, padding=(10, 8))
         self.toolbar.pack(side="top", fill="x")
@@ -270,6 +341,10 @@ class FilmPad:
         self._progress_win: tk.Toplevel | None = None
         self.local_ai_replace_range: tuple[str, str] | None = None
         self._speech_process: subprocess.Popen | None = None
+        self._tts_stop_event = threading.Event()
+        self._tts_thread: threading.Thread | None = None
+        self._tts_audio_proc: subprocess.Popen | None = None
+        self._tts_widget: tk.Text | None = None
 
         self._build_local_ai_workspace()
 
@@ -314,16 +389,37 @@ class FilmPad:
         ).pack(side="left")
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="left", fill="y", padx=(14, 10))
-        ttk.Button(
+        self._read_btn = ttk.Button(
             self.toolbar,
             text="\u25b6 Read Aloud",
-            command=self._read_aloud_selection,
-        ).pack(side="left")
-        ttk.Button(
-            self.toolbar,
-            text="\u25a0 Stop",
-            command=self._stop_read_aloud,
-        ).pack(side="left", padx=(6, 0))
+            command=self._toggle_read_aloud,
+            width=14,
+        )
+        self._read_btn.pack(side="left")
+
+        _piper_voices = _detect_piper_voices()
+        if _piper_voices:
+            if not self._piper_voice_var.get():
+                self._piper_voice_var.set(_piper_voices[0])
+            ttk.Label(self.toolbar, text="Voice").pack(side="left", padx=(10, 4))
+            ttk.Combobox(
+                self.toolbar,
+                textvariable=self._piper_voice_var,
+                values=["spd-say"] + _piper_voices,
+                state="readonly",
+                width=20,
+            ).pack(side="left", padx=(0, 6))
+            ttk.Label(self.toolbar, text="Speed").pack(side="left", padx=(10, 4))
+            _speed_lbl = ttk.Label(self.toolbar, text="0.8\u00d7", width=4)
+            ttk.Scale(
+                self.toolbar,
+                from_=0.5, to=2.0,
+                orient="horizontal",
+                variable=self._tts_speed_var,
+                length=80,
+                command=lambda v: _speed_lbl.configure(text=f"{float(v):.1f}\u00d7"),
+            ).pack(side="left", padx=(0, 2))
+            _speed_lbl.pack(side="left", padx=(0, 8))
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="right", fill="y", padx=(10, 14))
         self._theme_btn = ttk.Button(
@@ -504,10 +600,11 @@ class FilmPad:
             disabledforeground=c["gutter_fg"],
             borderwidth=0, relief="flat",
         )
-        for menu_attr in ("_menu_bar", "_file_menu", "_format_menu", "_font_menu", "_screenplay_menu"):
-            if hasattr(self, menu_attr):
+        for menu_attr in ("_menu_bar", "_file_menu", "_recent_menu", "_format_menu", "_font_menu", "_screenplay_menu"):
+            obj = getattr(self, menu_attr, None)
+            if isinstance(obj, tk.Menu):
                 try:
-                    getattr(self, menu_attr).configure(**menu_opts)
+                    obj.configure(**menu_opts)
                 except Exception:
                     pass
 
@@ -781,6 +878,9 @@ class FilmPad:
         self._file_menu = file_menu
         file_menu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
         file_menu.add_command(label="Open...", command=self.open_file, accelerator="Ctrl+O")
+        recent_menu = tk.Menu(file_menu, tearoff=0)
+        self._recent_menu = recent_menu
+        file_menu.add_cascade(label="Open Recent", menu=recent_menu)
         file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
         file_menu.add_command(label="Save As...", command=self.save_as_file)
         file_menu.add_separator()
@@ -824,6 +924,7 @@ class FilmPad:
         self.root.bind("<Control-o>", lambda _e: self.open_file())
         self.root.bind("<Control-s>", lambda _e: self.save_file())
         self.root.bind("<F7>", lambda _e: self._check_spelling())
+        self._rebuild_recent_menu()
 
     def _get_installed_ollama_models(self) -> set[str]:
         if not shutil.which("ollama"):
@@ -3619,6 +3720,13 @@ class FilmPad:
         self.local_ai_status_var.set(f"Opened {name}. Click in the result pane to set the insertion point.")
 
     def _read_aloud_selection(self) -> None:
+        voice = self._piper_voice_var.get()
+        if voice and voice != "spd-say" and _PIPER_PYTHON.exists():
+            self._piper_read_aloud(voice)
+        else:
+            self._spd_read_aloud()
+
+    def _spd_read_aloud(self) -> None:
         if not shutil.which("spd-say"):
             messagebox.showinfo(
                 "Read Aloud",
@@ -3629,18 +3737,194 @@ class FilmPad:
         try:
             text = target.get("sel.first", "sel.last")
         except tk.TclError:
-            text = target.get("1.0", "end-1c")
+            cursor = target.index(tk.INSERT)
+            text = target.get(cursor, "end-1c")
         text = text[:3000]
         if not text.strip():
             return
         self._stop_read_aloud()
+        if self._read_btn is not None:
+            self._read_btn.configure(text="\u25a0 Stop Reading")
         self._speech_process = subprocess.Popen(
             ["spd-say", "-l", "en-US", "-t", "male1", "-r", "-20", text],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        self.root.after(300, self._poll_spd_say)
+
+    def _piper_read_aloud(self, voice: str) -> None:
+        """Start streaming Piper TTS from cursor (or selection) to end of document."""
+        target = self._active_editor_widget()
+        try:
+            text = target.get("sel.first", "sel.last")
+            text_start = target.index("sel.first")
+        except tk.TclError:
+            text_start = target.index(tk.INSERT)
+            text = target.get(text_start, "end-1c")
+        text = text[:50000].strip()
+        if not text:
+            return
+        self._stop_read_aloud()
+        self._tts_stop_event.clear()
+        chunks = _split_tts_chunks(text)
+        if not chunks:
+            return
+
+        # Configure sentence-highlight tag using system accent colour
+        accent = _get_system_accent_sel_bg()
+        target.tag_configure("tts_reading", background=accent, foreground="#ffffff")
+        target.tag_raise("tts_reading")
+
+        # Pre-compute widget index for the start of each chunk (main-thread safe)
+        positions: list[tuple[str, str] | None] = []
+        search_pos = text_start
+        for chunk in chunks:
+            needle = chunk[:50]
+            hit = target.search(needle, search_pos, tk.END)
+            if hit:
+                positions.append((hit, f"{hit} + {len(chunk)}c"))
+                search_pos = hit
+            else:
+                positions.append(None)
+
+        if self._read_btn is not None:
+            self._read_btn.configure(text="\u25a0 Stop Reading")
+        self._tts_widget = target
+        speed = self._tts_speed_var.get()
+        self._tts_thread = threading.Thread(
+            target=self._piper_stream_thread,
+            args=(chunks, voice, positions, target, speed),
+            daemon=True,
+        )
+        self._tts_thread.start()
+
+    def _piper_stream_thread(
+        self, chunks: list[str], voice: str,
+        positions: list[tuple[str, str] | None], widget: tk.Text,
+        speed: float = 1.0,
+    ) -> None:
+        """Double-buffer Piper TTS: generate chunk N+1 while chunk N plays."""
+        voice_model = str(_PIPER_VOICES_DIR / f"{voice}.onnx")
+        stop = self._tts_stop_event
+        player = shutil.which("aplay") or shutil.which("paplay") or shutil.which("ffplay")
+        if not player:
+            return
+        # Two alternating tmp WAV files — lean on disk, always overwritten
+        tmp_paths = [
+            Path("/tmp/filmpad_tts_0.wav"),
+            Path("/tmp/filmpad_tts_1.wav"),
+        ]
+
+        def _highlight(idx: int) -> None:
+            pos = positions[idx] if idx < len(positions) else None
+            try:
+                widget.tag_remove("tts_reading", "1.0", tk.END)
+                if pos:
+                    widget.tag_add("tts_reading", pos[0], pos[1])
+                    # Scroll only when the bottom of the highlight reaches
+                    # the viewport bottom — then slide so the chunk tops the view.
+                    end_bbox = widget.bbox(pos[1])
+                    vh = widget.winfo_height()
+                    if end_bbox is None or end_bbox[1] + end_bbox[3] >= vh - 10:
+                        line = int(pos[0].split(".")[0])
+                        total = max(int(widget.index("end-1c").split(".")[0]), 1)
+                        widget.yview_moveto((line - 1) / total)
+            except tk.TclError:
+                pass
+
+        def _clear_hl() -> None:
+            try:
+                widget.tag_remove("tts_reading", "1.0", tk.END)
+            except tk.TclError:
+                pass
+
+        def generate(chunk: str, path: Path) -> bool:
+            if stop.is_set():
+                return False
+            length_scale = round(1.0 / max(speed, 0.1), 2)
+            try:
+                proc = subprocess.Popen(
+                    [str(_PIPER_PYTHON), "-m", "piper", "-m", voice_model,
+                     "-f", str(path), "--length-scale", str(length_scale)],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                proc.communicate(input=chunk.encode("utf-8"))
+                return proc.returncode == 0 and path.exists() and path.stat().st_size > 44
+            except OSError:
+                return False
+
+        try:
+            buf = 0
+            # Pre-generate first chunk before starting playback loop
+            if not generate(chunks[0], tmp_paths[0]):
+                return
+            for i, _chunk in enumerate(chunks):
+                if stop.is_set():
+                    break
+                play_path = tmp_paths[buf]
+                next_buf = buf ^ 1
+                # Highlight the sentence currently being spoken
+                self.root.after(0, _highlight, i)
+                # Begin playback of current chunk
+                if "ffplay" in player:
+                    play_cmd = [player, "-nodisp", "-autoexit", "-loglevel", "quiet", str(play_path)]
+                else:
+                    play_cmd = [player, str(play_path)]
+                audio_proc = subprocess.Popen(
+                    play_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                self._tts_audio_proc = audio_proc
+                # Overlap: generate next chunk while current chunk plays
+                next_ok = False
+                if i + 1 < len(chunks):
+                    next_ok = generate(chunks[i + 1], tmp_paths[next_buf])
+                # Wait for current playback to finish
+                audio_proc.wait()
+                self._tts_audio_proc = None
+                if stop.is_set():
+                    break
+                if i + 1 < len(chunks):
+                    if not next_ok:
+                        # Generation didn't overlap cleanly — try now (brief pause)
+                        next_ok = generate(chunks[i + 1], tmp_paths[next_buf])
+                    if next_ok:
+                        buf = next_buf
+                    else:
+                        break
+        finally:
+            self._tts_audio_proc = None
+            self.root.after(0, self._on_tts_finished)
+            for p in tmp_paths:
+                try:
+                    p.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     def _stop_read_aloud(self) -> None:
+        # Signal Piper thread to stop and kill any active audio playback
+        self._tts_stop_event.set()
+        audio_proc = self._tts_audio_proc
+        if audio_proc is not None:
+            try:
+                audio_proc.kill()
+            except OSError:
+                pass
+            self._tts_audio_proc = None
+        # Clear sentence highlight and reset button immediately
+        w = self._tts_widget
+        if w is not None:
+            try:
+                w.tag_remove("tts_reading", "1.0", tk.END)
+            except tk.TclError:
+                pass
+        if self._read_btn is not None:
+            try:
+                self._read_btn.configure(text="\u25b6 Read Aloud")
+            except tk.TclError:
+                pass
+        # Stop spd-say
         proc = self._speech_process
         if proc is not None:
             try:
@@ -3654,6 +3938,39 @@ class FilmPad:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+
+    def _toggle_read_aloud(self) -> None:
+        reading = (
+            (self._tts_thread is not None and self._tts_thread.is_alive())
+            or self._speech_process is not None
+        )
+        if reading:
+            self._stop_read_aloud()
+        else:
+            self._read_aloud_selection()
+
+    def _on_tts_finished(self) -> None:
+        """Called on the main thread when TTS ends naturally; resets button and clears highlight."""
+        w = self._tts_widget
+        if w is not None:
+            try:
+                w.tag_remove("tts_reading", "1.0", tk.END)
+            except tk.TclError:
+                pass
+        if self._read_btn is not None:
+            try:
+                self._read_btn.configure(text="\u25b6 Read Aloud")
+            except tk.TclError:
+                pass
+
+    def _poll_spd_say(self) -> None:
+        """Poll the spd-say subprocess and reset button when it finishes naturally."""
+        proc = self._speech_process
+        if proc is not None and proc.poll() is None:
+            self.root.after(300, self._poll_spd_say)
+        else:
+            self._speech_process = None
+            self._on_tts_finished()
 
     def _pick_local_ai_temp_dir(self) -> None:
         path = filedialog.askdirectory(title="Choose chunks temp folder")
@@ -4303,6 +4620,7 @@ class FilmPad:
         self.current_file = path
         self.text.edit_modified(False)
         self._set_title()
+        self._add_to_recent(path)
 
     def save_file(self) -> bool:
         if not self.current_file:
@@ -4327,11 +4645,67 @@ class FilmPad:
         )
         if not path:
             return False
-
         self.current_file = path
-        return self.save_file()
+        result = self.save_file()
+        if result:
+            self._add_to_recent(path)
+        return result
+
+    def _add_to_recent(self, path: str) -> None:
+        """Prepend path to the recent list, cap at 10, persist and rebuild menu."""
+        p = str(Path(path).resolve())
+        if p in self._recent_files:
+            self._recent_files.remove(p)
+        self._recent_files.insert(0, p)
+        self._recent_files = self._recent_files[:10]
+        _save_recent_files(self._recent_files)
+        self._rebuild_recent_menu()
+
+    def _rebuild_recent_menu(self) -> None:
+        """Repopulate the Open Recent submenu from self._recent_files."""
+        m = self._recent_menu
+        if m is None:
+            return
+        m.delete(0, tk.END)
+        if not self._recent_files:
+            m.add_command(label="No recent files", state="disabled")
+            return
+        for path in self._recent_files:
+            exists = Path(path).exists()
+            label = Path(path).name + "   —   " + str(Path(path).parent)
+            m.add_command(
+                label=label,
+                command=lambda p=path: self._open_recent(p),
+                state="normal" if exists else "disabled",
+            )
+        m.add_separator()
+        m.add_command(label="Clear Recent", command=self._clear_recent)
+
+    def _open_recent(self, path: str) -> None:
+        if not self._confirm_discard():
+            return
+        try:
+            content = Path(path).read_text(encoding="utf-8")
+        except OSError as e:
+            messagebox.showerror("Open failed", str(e))
+            self._recent_files = [p for p in self._recent_files if p != path]
+            _save_recent_files(self._recent_files)
+            self._rebuild_recent_menu()
+            return
+        self.text.delete("1.0", tk.END)
+        self.text.insert("1.0", content)
+        self.current_file = path
+        self.text.edit_modified(False)
+        self._set_title()
+        self._add_to_recent(path)
+
+    def _clear_recent(self) -> None:
+        self._recent_files = []
+        _save_recent_files(self._recent_files)
+        self._rebuild_recent_menu()
 
     def on_exit(self) -> None:
+        self._stop_read_aloud()
         if self._confirm_discard():
             self.root.destroy()
 
