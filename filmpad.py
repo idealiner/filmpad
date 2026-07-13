@@ -2963,6 +2963,7 @@ class FilmPad:
         if self._ss_style_rewrite_var.get():
             _kb = self._read_project_knowledge()
             _knowledge_note = f", knowledge={'yes' if _kb else 'none'}"
+        self._ss_last_saved_str = "—"
         self._ss_full_log = [f"SS started — {len(scenes)} scenes, style_rewrite={self._ss_style_rewrite_var.get()}{_knowledge_note}"]
         self._script_supervisor_running = True
         self._at_progress_var.set(0.0)
@@ -3094,7 +3095,7 @@ class FilmPad:
         self._show_writer_ai_progress_overlay(
             f"Script Supervisor \u2014 scene {idx + 1}/{total}", model
         )
-        _timeout = 120 if self._ss_style_rewrite_var.get() else 90
+        _timeout = 300
         threading.Thread(
             target=self._ss_thread,
             args=(model, prompt, scene_text, start, end, idx, total, _timeout),
@@ -3145,6 +3146,9 @@ class FilmPad:
             self._ss_log_var.set(_msg)
             self._ss_full_log.append(_msg)
             self._ss_scene_idx += 1
+            self.writer_ai_status_var.set(
+                f"Script Supervisor — scene {min(scene_num + 2, total)}/{total} | saved: {getattr(self, '_ss_last_saved_str', '—')}"
+            )
             self.root.after(400, self._ss_step)
             return
         import difflib
@@ -3201,12 +3205,17 @@ class FilmPad:
         # Clear undo history and save after every scene to protect against OOM freeze
         self.text.edit_reset()
         _saved = self._silent_save()
+        if _saved:
+            self._ss_last_saved_str = time.strftime("%H:%M:%S")
         self._ss_applied_count += 1
         pct_changed = int((1.0 - ratio) * 100)
         _save_note = "  ✓ saved" if _saved else "  ⚠ unsaved"
         _msg = f"Scene {scene_num + 1}/{total}: rewritten ({ratio:.0%} similar, {pct_changed}% changed){_save_note}"
         self._ss_log_var.set(_msg)
         self._ss_full_log.append(_msg)
+        self.writer_ai_status_var.set(
+            f"Script Supervisor — scene {scene_num + 1}/{total} | saved: {self._ss_last_saved_str}"
+        )
         self._ss_pending = None
         self._ss_scene_list = self._ss_get_scenes()
         self._ss_scene_idx = scene_num + 1
@@ -3394,7 +3403,7 @@ class FilmPad:
         )
         threading.Thread(
             target=self._ss_thread,
-            args=(model, prompt, scene_text, start, end, idx, total, 180),
+            args=(model, prompt, scene_text, start, end, idx, total, 300),
             kwargs={"finish_fn": self._tp_finish},
             daemon=True,
         ).start()
@@ -3598,12 +3607,17 @@ class FilmPad:
             # Clear undo history and save after every accepted scene
             self.text.edit_reset()
             _saved = self._silent_save()
+            if _saved:
+                self._ss_last_saved_str = __import__("time").strftime("%H:%M:%S")
             win.destroy()
             self._ss_pending = None
             _save_note = "  ✓ saved" if _saved else "  ⚠ unsaved"
             _msg = f"Scene {item['scene_num'] + 1}/{item['total']}: accepted{_save_note}"
             self._ss_log_var.set(_msg)
             self._ss_full_log.append(_msg)
+            self.writer_ai_status_var.set(
+                f"Script Supervisor — scene {item['scene_num'] + 1}/{item['total']} | saved: {self._ss_last_saved_str}"
+            )
             # Rebuild scene list to account for text changes, then advance
             self._ss_scene_list = self._ss_get_scenes()
             self._ss_scene_idx = item["scene_num"] + 1
