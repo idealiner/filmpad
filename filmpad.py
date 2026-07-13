@@ -4434,7 +4434,8 @@ class FilmPad:
         lines = [ln for ln in scene_text.splitlines() if ln.strip()]
         if not lines:
             return False
-        # Known artifact markers
+
+        # 1. Known artifact markers
         _ART = re.compile(
             r'\[(?:continued|end of block|inaudible|transcription|scene continues|cut here)\]'
             r'|5-ACT\b|HERO.S JOURNEY|ordinary world|call to adventure|purpose\s*:'
@@ -4443,18 +4444,51 @@ class FilmPad:
         )
         if any(_ART.search(ln) for ln in lines):
             return True
-        # Exact duplicate adjacent lines
+
+        # 2. Exact duplicate adjacent lines
         for i in range(len(lines) - 1):
             if lines[i].strip() and lines[i].strip() == lines[i + 1].strip():
                 return True
-        # Dialogue line (starts with a quote) without ALL CAPS character cue above it
-        _CUE = re.compile(r'^[A-Z][A-Z0-9 \'\-\.]+(?:\s*\([A-Z\.\'/ ]+\))?$')
+
+        _HEADING = re.compile(r'^\s*(INT\.|EXT\.|I/E\.)', re.IGNORECASE)
+        _TRANS   = re.compile(r'^(CUT TO|FADE|DISSOLVE|SMASH|MATCH CUT)', re.IGNORECASE)
+        _CUE     = re.compile(r'^[A-Z][A-Z0-9 \'\-\.]+(?:\s*\([A-Z\.\s\'/\- ]+\))?$')
+
+        # 3. Past-tense verbs in non-heading, non-cue lines (prose action leftovers)
+        _PAST = re.compile(
+            r'\b(walked|ran|said|asked|told|replied|looked|turned|picked|grabbed'
+            r'|sat|stood|opened|closed|entered|left|came|went|saw|heard|felt'
+            r'|knew|thought|realized|noticed|moved|stepped|reached|pulled|pushed'
+            r'|nodded|smiled|laughed|whispered|shouted|cried|watched|stared'
+            r'|glanced|held|took|made|put|got|gave|found|brought|kept|began'
+            r'|started|stopped|continued|remained|appeared|seemed|became)\b'
+        )
+        for raw in lines:
+            s = raw.strip()
+            if not s or s.isupper() or _HEADING.match(s) or _TRANS.match(s) or _CUE.match(s):
+                continue
+            if _PAST.search(s):
+                return True
+
+        # 4. Conversational-sounding lines without an ALL CAPS character cue above them.
+        #    Screenplay dialogue has NO quote marks — detect by speech-start patterns.
+        _SPEECH = re.compile(
+            r'^(I |I\'|You |We |They |He |She |It\'|What |Why |How |When |Where |Who '
+            r'|Is |Are |Do |Did |Can |Will |Would |Could |Should |Shall '
+            r'|No[,\.! ]|Yes[,\.! ]|Well[,\-\ ]|Oh[,\.! ]|Ah[,\.! ]'
+            r'|Look[,\.! ]|Wait[,\.! ]|Come on|Don\'t|That\'s|There\'s'
+            r'|Get |Stop |Help|Please|Sorry|Listen|Right\b)',
+            re.IGNORECASE,
+        )
         for i, raw in enumerate(lines):
             s = raw.strip()
-            if s.startswith('"') or s.startswith("'"):
+            if not s or s.isupper() or len(s) > 100 or _HEADING.match(s) or _TRANS.match(s):
+                continue
+            if _SPEECH.match(s):
                 prev = lines[i - 1].strip() if i > 0 else ""
                 if not _CUE.match(prev):
                     return True
+
         return False
 
     def _ss_is_character_cue(self, line: str) -> bool:
