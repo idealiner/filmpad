@@ -117,18 +117,50 @@ echo ""
 echo "── Natural voice TTS: Piper (optional) ─"
 PIPER_PY="$HOME/.local/share/piper/venv/bin/python"
 PIPER_VOICES_DIR="$HOME/.local/share/piper/voices"
-if [ -x "$PIPER_PY" ] && [ -d "$PIPER_VOICES_DIR" ] && ls "$PIPER_VOICES_DIR"/*.onnx &>/dev/null 2>&1; then
+RYAN_VOICE="$PIPER_VOICES_DIR/en_US-ryan-high.onnx"
+RYAN_JSON="$PIPER_VOICES_DIR/en_US-ryan-high.onnx.json"
+
+PIPER_OK=false
+RYAN_OK=false
+
+if [ -x "$PIPER_PY" ]; then
+    PIPER_OK=true
+fi
+if [ -f "$RYAN_VOICE" ] && [ -f "$RYAN_JSON" ]; then
+    RYAN_OK=true
+fi
+
+if $PIPER_OK && $RYAN_OK; then
     VOICE_COUNT="$(ls "$PIPER_VOICES_DIR"/*.onnx 2>/dev/null | wc -l)"
-    echo "${PASS} Piper installed  ($VOICE_COUNT voice(s) in $PIPER_VOICES_DIR)"
+    echo "${PASS} Piper installed  ($VOICE_COUNT voice(s) found)"
+    echo "${PASS} en_US-ryan-high voice present"
 else
-    echo "${INFO} Piper not found  (optional — enables natural-sounding offline TTS)"
-    echo "     Suggested voice : en_US-ryan-high"
-    echo "     Install guide   : https://github.com/rhasspy/piper"
-    echo "     Quick setup     :"
-    echo "       mkdir -p ~/.local/share/piper/voices"
-    echo "       python3 -m venv ~/.local/share/piper/venv"
-    echo "       ~/.local/share/piper/venv/bin/pip install piper-tts"
-    echo "       # then drop en_US-ryan-high.onnx + .onnx.json into the voices dir"
+    if ! $PIPER_OK; then
+        echo "${WARN} Piper TTS not installed  (enables natural-sounding offline read-aloud)"
+        echo ""
+        echo "     To install Piper:"
+        echo "       mkdir -p ~/.local/share/piper/voices"
+        echo "       python3 -m venv ~/.local/share/piper/venv"
+        echo "       ~/.local/share/piper/venv/bin/pip install piper-tts"
+    else
+        echo "${PASS} Piper venv installed"
+    fi
+
+    if ! $RYAN_OK; then
+        echo ""
+        if $PIPER_OK; then
+            echo "${WARN} en_US-ryan-high voice not found"
+        fi
+        echo "     To download the Ryan EN voice (recommended):"
+        echo "       mkdir -p ~/.local/share/piper/voices"
+        echo "       cd ~/.local/share/piper/voices"
+        echo "       wget -q --show-progress \\"
+        echo "         https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx"
+        echo "       wget -q --show-progress \\"
+        echo "         https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx.json"
+        echo ""
+        echo "     Then restart FilmPad — the voice will appear in the toolbar dropdown."
+    fi
 fi
 
 # ── 7. AppImage dependencies (Linux only) ───────────────────────

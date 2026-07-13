@@ -4491,6 +4491,19 @@ class FilmPad:
 
         return False
 
+    def _ss_is_inline_attribution(self, line: str) -> bool:
+        """Return True if line looks like inline prose attribution:
+        e.g. 'Richard: "text"'  or  'Victoria (voice on phone): "text"'"""
+        import re
+        s = line.strip()
+        if not s or len(s) > 300:
+            return False
+        # Pattern: Name (optional note): content
+        return bool(re.match(
+            r'^[A-Za-z][A-Za-z\s\.]+(?:\s*\([^)]+\))?\s*:',
+            s
+        ))
+
     def _ss_is_character_cue(self, line: str) -> bool:
         """Return True if line looks like a character cue (ALL CAPS name above dialogue)."""
         import re
@@ -4564,10 +4577,18 @@ class FilmPad:
                         else:
                             result.append(o)  # restore original words
                 else:
-                    # Size mismatch: preserve originals unless known artifacts
-                    for o in ob:
-                        if not self._ss_is_artifact_line(o):
-                            result.append(o)
+                    # Size mismatch: allow inline attribution reformatting
+                    # e.g. 'Richard: "text"' → RICHARD / (note) / text
+                    if (len(ob) == 1
+                            and self._ss_is_inline_attribution(ob[0])
+                            and pb
+                            and self._ss_is_character_cue(pb[0])):
+                        result.extend(pb)  # accept the screenplay expansion
+                    else:
+                        # Preserve originals unless known artifacts
+                        for o in ob:
+                            if not self._ss_is_artifact_line(o):
+                                result.append(o)
             elif tag == "insert":
                 # Allow insertion of character cue lines (formatting fix — missing attribution)
                 for p in prop_lines[j1:j2]:
