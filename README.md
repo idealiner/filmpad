@@ -4,12 +4,13 @@ FilmPad is a screenplay editor and local AI adaptation tool built with Python an
 
 ## Download
 
-> **Latest release: v0.6** — [All releases](https://github.com/idealiner/filmpad/releases)
+> **Latest release: v0.9** — [All releases](https://github.com/idealiner/filmpad/releases)
 
 | Platform | Download |
-|----------|---------|
-| **Linux x86_64** | [FilmPad-v0.6-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.6/FilmPad-v0.6-x86_64.AppImage) |
-| **Diagnostics** | [doctor.sh](https://github.com/idealiner/filmpad/releases/download/v0.6/doctor.sh) |
+|----------|----------|
+| **Linux x86_64** | [FilmPad-v0.9-x86_64.AppImage](https://github.com/idealiner/filmpad/releases/download/v0.9/FilmPad-v0.9-x86_64.AppImage) |
+| **Diagnostics** | [doctor.sh](https://github.com/idealiner/filmpad/releases/download/v0.9/doctor.sh) |
+| **Prompt templates** | [FilmPad-v0.9-templates.zip](https://github.com/idealiner/filmpad/releases/download/v0.9/FilmPad-v0.9-templates.zip) |
 
 Windows and macOS builds are not yet available. The app can be run from source on any platform — see [Running from source](#running-from-source) below.
 
@@ -28,34 +29,16 @@ If the app does not launch on first try, download and run `doctor.sh` from the t
 
 ## Releases
 
-### v0.9 — Natural Voice Read-Aloud (suggested next release)
-*2026-07-12*
+### v0.9 — Dictation + Stability
+*2026-07-13*
 
-- **Piper TTS integration** — natural-sounding offline text-to-speech using [Piper](https://github.com/rhasspy/piper); streams audio in sentence-sized chunks with double-buffering so the next chunk generates while the current one plays
-- **Voice selector dropdown** — toolbar dropdown lists all voices found in `~/.local/share/piper/voices`; includes `spd-say` fallback entry; dropdown only appears when at least one Piper voice is installed
-- **Speed slider** — `0.5×`–`2.0×` speed control in the toolbar; defaults to `0.8×` for a comfortable listening pace
-- **Play / Stop toggle** — single toolbar button replaces the old separate Play + Stop pair; label updates live between `▶ Read Aloud` and `■ Stop Reading`
-- **Reads from cursor** — reading starts at the current cursor position and continues to end of document; click anywhere in the script and press the button
-- **Sentence karaoke highlight** — the sentence currently being spoken is highlighted in the system accent colour; view auto-scrolls when the highlight reaches the bottom of the viewport
-- **Open Recent menu** — `File → Open Recent` submenu; persists up to 10 files across sessions in `~/.config/filmpad/recent_files.json`; missing files shown disabled; **Clear Recent** entry at the bottom
-
-#### Optional download for v0.9: Piper voice `en_US-ryan-high`
-
-The AppImage ships without voice data. To enable natural voice read-aloud:
-
-```bash
-# 1. Create the Piper environment
-mkdir -p ~/.local/share/piper/voices
-python3 -m venv ~/.local/share/piper/venv
-~/.local/share/piper/venv/bin/pip install piper-tts
-
-# 2. Download the Ryan voice (high quality)
-cd ~/.local/share/piper/voices
-wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx
-wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/high/en_US-ryan-high.onnx.json
-```
-
-FilmPad detects the voice on startup — no configuration needed. `spd-say` remains the fallback if Piper is not installed.
+- **Speech-to-text dictation at cursor** — 🎤 Dictate / ⏹ Stop / ✕ Cancel toolbar buttons; records via `arecord` and transcribes with [whisper.cpp](https://github.com/ggerganov/whisper.cpp) fully offline; text inserted at the cursor as one undoable step; entire block hidden when tools are absent
+- **Dictation Settings accordion** — configurable `whisper-cli` executable path, GGML model file (`ggml-tiny.en.bin` default), language, and microphone device
+- **Auto-save after every SS / TP scene** — Script Supervisor and Typewriter Postscript now save silently after each applied scene; log appends `✓ saved HH:MM:SS` or `⚠ unsaved`; sidebar status shows *Script Supervisor — scene X/Y | saved: HH:MM:SS* in real time
+- **Save-before-start prompt** — Auto Transcript, Script Supervisor, and Typewriter Postscript prompt to save the file before starting if no file path is set
+- **5-minute timeout on all model calls** — Writer AI, Auto Transcript, Script Supervisor (was 90 s), and Typewriter Postscript (was 180 s) all cap each Ollama call at 300 s; a stalled model is killed cleanly and logged as `timeout — skipped`
+- **Undo history cleared after each pipeline scene** — `edit_reset()` after every Auto Transcript block and every SS / TP scene keeps RAM bounded during long unattended runs
+- **doctor.sh Section 8** — checks `arecord`, `whisper-cli`, and GGML model files with sizes and direct download / build instructions
 
 ### v0.7.1 — Polish & Reliability
 *2026-06-28*
@@ -133,7 +116,9 @@ FilmPad detects the voice on startup — no configuration needed. `spd-say` rema
 
 | Dependency | Purpose | Notes |
 |---|---|---|
-| **[Piper TTS](https://github.com/rhasspy/piper)** | Natural-voice offline read-aloud | See v0.9 release notes for install steps |
+| **[Piper TTS](https://github.com/rhasspy/piper)** | Natural-voice offline read-aloud | `python3 -m venv ~/.local/share/piper/venv && pip install piper-tts` |
+| **[whisper.cpp](https://github.com/ggerganov/whisper.cpp)** | Offline speech-to-text dictation | Build and copy `whisper-cli` to `~/.local/bin/`; download a GGML model |
+| **alsa-utils** | Microphone recording for dictation | `sudo apt install alsa-utils` |
 | **aspell** | Spell check | `sudo apt install aspell aspell-en` |
 
 ### Ollama models
