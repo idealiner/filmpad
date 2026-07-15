@@ -4507,31 +4507,16 @@ class FilmPad:
 
     # \u2500\u2500 Dictation (whisper.cpp at cursor) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
-    def _dictation_set_recording(self, active: bool) -> None:
-        """Update toolbar button states to reflect recording state."""
-        self._dictation_recording = active
-        self._dictation_status_var.set("\u25cf REC" if active else "")
-        try:
-            if self._dictation_start_btn is not None:
-                self._dictation_start_btn.configure(
-                    state="disabled" if active else "normal"
-                )
-            if self._dictation_stop_btn is not None:
-                self._dictation_stop_btn.configure(
-                    state="normal" if active else "disabled"
-                )
-            if self._dictation_cancel_btn is not None:
-                self._dictation_cancel_btn.configure(
-                    state="normal" if active else "disabled"
-                )
-        except tk.TclError:
-            pass
+    def _toggle_dictation(self) -> None:
+        if self._dictation_recording:
+            self._stop_dictation_and_transcribe()
+        else:
+            self._start_dictation()
 
     def _start_dictation(self) -> None:
         if self._dictation_recording:
             return
 
-        # -- Validate prerequisites --
         if not shutil.which("arecord"):
             messagebox.showerror(
                 "Dictation \u2014 missing tool",
@@ -4570,13 +4555,11 @@ class FilmPad:
             )
             return
 
-        # -- Save insertion target --
         target = self._active_editor_widget()
         self._dictation_target = target
         self._dictation_cursor_pos = target.index(tk.INSERT)
         self._dictation_cancelled = False
 
-        # -- Create temp WAV file --
         import tempfile
         tmp = tempfile.NamedTemporaryFile(
             suffix=".wav", prefix="filmpad_dictation_", delete=False
@@ -4584,7 +4567,6 @@ class FilmPad:
         tmp.close()
         self._dictation_tmp_wav = tmp.name
 
-        # -- Build arecord command --
         device = self._dictation_device_var.get().strip()
         arecord_cmd = ["arecord", "-f", "S16_LE", "-r", "16000", "-c", "1"]
         if device:
@@ -4598,10 +4580,7 @@ class FilmPad:
                 stderr=subprocess.DEVNULL,
             )
         except OSError as exc:
-            messagebox.showerror(
-                "Dictation",
-                f"Microphone recording failed to start:\n{exc}",
-            )
+            messagebox.showerror("Dictation", f"Microphone recording failed to start:\n{exc}")
             try:
                 Path(self._dictation_tmp_wav).unlink(missing_ok=True)
             except Exception:
@@ -4609,13 +4588,160 @@ class FilmPad:
             self._dictation_tmp_wav = None
             return
 
-        self._dictation_set_recording(True)
+        self._dictation_recording = True
+        if self._dictation_start_btn is not None:
+            self._dictation_start_btn.configure(text="\u23f9 Stop")
 
-    def _stop_dictation_and_transcribe(self) -> None:
-        """Stop recording and launch whisper.cpp transcription in a background thread."""
+        self._dictation_max_secs = _dictation_max_record_secs()
+        self._dictation_elapsed_secs = 0
+        self._show_dictation_overlay()
+
+    def _show_dictation_overlay(self) -> None:
+        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        win = tk.Toplevel(self.root)
+        self._dictation_overlay = win
+        win.title("Recording\u2026")
+        win.resizable(False, False)
+        win.transient(self.root)
+        win.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        self.root.update_idletasks()
+        w, h = 420, 230
+        rx = self.root.winfo_rootx() + self.root.winfo_width() // 2 - w // 2
+        ry = self.root.winfo_rooty() + self.root.winfo_height() // 2 - h // 2
+        win.geometry(f"{w}x{h}+{max(0, rx)}+{max(0, ry)}")
+        win.configure(bg=c["ttk_bg"])
+        win.lift()
+
+        outer = ttk.Frame(win, padding=(24, 16, 24, 12))
+        outer.pack(fill="both", expand=True)
+
+        ttk.Label(
+            outer, text="\U0001f3a4  Recording",
+            font=("TkDefaultFont", 13, "bold"),
+        ).pack(anchor="w")
+
+        _status_lbl = ttk.Label(
+            outer, text="Speak now \u2014 press Stop & Transcribe when done.",
+            font=("TkDefaultFont", 9), foreground=c["status_fg"],
+        )
+        _status_lbl.pack(anchor="w", pady=(4, 10))
+
+        _bar = ttk.Progressbar(
+            outer, orient="horizontal", mode="determinate",
+            maximum=self._dictation_max_secs, value=0,
+        )
+        _bar.pack(fill="x")
+
+        _time_var = tk.StringVar(
+            value="0:00 / %d:%02d" % divmod(self._dictation_max_secs, 60)
+        )
+        ttk.Label(
+            outer, textvariable=_time_var,
+            font=("TkDefaultFont", 8), foreground=c["status_fg"],
+        ).pack(anchor="e", pady=(2, 0))
+
+        _mem_mb = 0
+        try:
+            with open("/proc/meminfo", encoding="utf-8") as _mf:
+                for _ml in _mf:
+                    if _ml.startswith("MemAvailable:"):
+                        _mem_mb = int(_ml.split()[1]) // 1024
+                        break
+        except Exception:
+            pass
+        _maxm, _maxs = divmod(self._dictation_max_secs, 60)
+        ttk.Label(
+            outer,
+            text=f"Max {_maxm}:{_maxs:02d} \u2014 based on {_mem_mb} MB available RAM",
+            font=("TkDefaultFont", 8), foreground=c["status_fg"],
+        ).pack(anchor="w", pady=(0, 8))
+
+        btn_row = ttk.Frame(outer)
+        btn_row.pack(fill="x")
+        _cancel_btn = ttk.Button(
+            btn_row, text="\u2715 Cancel", command=self._cancel_dictation, width=10
+        )
+        _cancel_btn.pack(side="left")
+        _stop_btn = ttk.Button(
+            btn_row, text="\u23f9 Stop & Transcribe",
+            command=self._stop_dictation_and_transcribe, width=20,
+        )
+        _stop_btn.pack(side="right")
+
+        win._dictation_bar = _bar
+        win._dictation_time_var = _time_var
+        win._dictation_status_lbl = _status_lbl
+        win._dictation_stop_btn = _stop_btn
+        win._dictation_cancel_btn = _cancel_btn
+
+        self._dictation_tick()
+
+    def _dictation_tick(self) -> None:
         if not self._dictation_recording:
             return
-        self._dictation_set_recording(False)
+        win = self._dictation_overlay
+        if win is None or not win.winfo_exists():
+            return
+        self._dictation_elapsed_secs += 1
+        elapsed = self._dictation_elapsed_secs
+        maxs = self._dictation_max_secs
+        try:
+            win._dictation_bar["value"] = min(elapsed, maxs)
+            em, es = divmod(elapsed, 60)
+            mm, ms = divmod(maxs, 60)
+            win._dictation_time_var.set(f"{em}:{es:02d} / {mm}:{ms:02d}")
+        except tk.TclError:
+            return
+        if elapsed >= maxs:
+            self._stop_dictation_and_transcribe()
+            return
+        self._dictation_tick_job = self.root.after(1000, self._dictation_tick)
+
+    def _dictation_overlay_set_transcribing(self) -> None:
+        win = self._dictation_overlay
+        if win is None or not win.winfo_exists():
+            return
+        try:
+            win.title("Transcribing\u2026")
+            win._dictation_status_lbl.configure(
+                text="Running whisper-cli \u2014 please wait\u2026"
+            )
+            win._dictation_bar.configure(mode="indeterminate")
+            win._dictation_bar.start(12)
+            win._dictation_stop_btn.configure(state="disabled")
+            win._dictation_cancel_btn.configure(state="disabled")
+        except tk.TclError:
+            pass
+
+    def _close_dictation_overlay(self) -> None:
+        if self._dictation_tick_job is not None:
+            try:
+                self.root.after_cancel(self._dictation_tick_job)
+            except Exception:
+                pass
+            self._dictation_tick_job = None
+        win = self._dictation_overlay
+        self._dictation_overlay = None
+        if win is not None:
+            try:
+                win.destroy()
+            except tk.TclError:
+                pass
+
+    def _stop_dictation_and_transcribe(self) -> None:
+        if not self._dictation_recording:
+            return
+        self._dictation_recording = False
+        if self._dictation_start_btn is not None:
+            self._dictation_start_btn.configure(text="\U0001f3a4 Dictate")
+        if self._dictation_tick_job is not None:
+            try:
+                self.root.after_cancel(self._dictation_tick_job)
+            except Exception:
+                pass
+            self._dictation_tick_job = None
+        self._dictation_overlay_set_transcribing()
 
         proc = self._dictation_process
         self._dictation_process = None
@@ -4637,6 +4763,7 @@ class FilmPad:
         self._dictation_target = None
 
         if not wav_path or not cursor_pos or target is None:
+            self._close_dictation_overlay()
             return
 
         exe_path = self._dictation_exe_var.get().strip()
@@ -4649,6 +4776,7 @@ class FilmPad:
                 Path(wav_path).unlink(missing_ok=True)
             except Exception:
                 pass
+            self._close_dictation_overlay()
             return
 
         def _run() -> None:
@@ -4656,17 +4784,9 @@ class FilmPad:
             error_msg = ""
             try:
                 result = subprocess.run(
-                    [
-                        whisper_exe,
-                        "-m", model_path,
-                        "-f", wav_path,
-                        "-l", lang,
-                        "-nt",
-                        "-np",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
+                    [whisper_exe, "-m", model_path, "-f", wav_path,
+                     "-l", lang, "-nt", "-np"],
+                    capture_output=True, text=True, timeout=120,
                 )
                 if result.returncode == 0:
                     raw = result.stdout.strip()
@@ -4688,7 +4808,7 @@ class FilmPad:
                     Path(wav_path).unlink(missing_ok=True)
                 except Exception:
                     pass
-
+            self.root.after(0, self._close_dictation_overlay)
             if self._dictation_cancelled:
                 return
             if transcript:
@@ -4696,13 +4816,10 @@ class FilmPad:
                     0, lambda t=transcript: self._insert_dictation(target, cursor_pos, t)
                 )
             elif error_msg:
-                self.root.after(
-                    0, lambda m=error_msg: messagebox.showerror("Dictation", m)
-                )
+                self.root.after(0, lambda m=error_msg: messagebox.showerror("Dictation", m))
             else:
                 self.root.after(
-                    0,
-                    lambda: messagebox.showwarning(
+                    0, lambda: messagebox.showwarning(
                         "Dictation", "No usable speech was detected in the recording."
                     ),
                 )
@@ -4710,11 +4827,19 @@ class FilmPad:
         threading.Thread(target=_run, daemon=True).start()
 
     def _cancel_dictation(self) -> None:
-        """Stop recording and discard the audio without transcribing."""
         if not self._dictation_recording:
             return
         self._dictation_cancelled = True
-        self._dictation_set_recording(False)
+        self._dictation_recording = False
+        if self._dictation_start_btn is not None:
+            self._dictation_start_btn.configure(text="\U0001f3a4 Dictate")
+        if self._dictation_tick_job is not None:
+            try:
+                self.root.after_cancel(self._dictation_tick_job)
+            except Exception:
+                pass
+            self._dictation_tick_job = None
+        self._close_dictation_overlay()
 
         proc = self._dictation_process
         self._dictation_process = None
@@ -4739,7 +4864,6 @@ class FilmPad:
             pass
 
     def _insert_dictation(self, target: tk.Text, pos: str, text: str) -> None:
-        """Insert transcript at saved cursor position as one undoable operation."""
         if not text:
             return
         if not text.endswith(" "):
@@ -4750,7 +4874,6 @@ class FilmPad:
         new_pos = target.index(f"{pos}+{len(text)}c")
         target.mark_set(tk.INSERT, new_pos)
         target.see(tk.INSERT)
-
     def _pick_dictation_exe(self) -> None:
         path = filedialog.askopenfilename(title="Select whisper-cli executable")
         if path:
