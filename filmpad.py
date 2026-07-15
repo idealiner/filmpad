@@ -1115,7 +1115,7 @@ class FilmPad:
         file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
         file_menu.add_command(label="Save As...", command=self.save_as_file)
         file_menu.add_separator()
-        file_menu.add_command(label="Strip Scene Card Metadata", command=self._strip_scene_card_metadata)
+        file_menu.add_command(label="Strip Artifacts", command=self._strip_scene_card_metadata)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.on_exit)
 
@@ -3782,6 +3782,8 @@ class FilmPad:
             title = "Auto Transcript"
         elif "script supervisor" in detail.lower():
             title = "Script Supervisor"
+        elif "postscript" in detail.lower() or "typewriter" in detail.lower():
+            title = "Typewriter Postscript"
         else:
             title = "Writer AI Edit"
         ttk.Label(outer, text=title,
@@ -3826,6 +3828,22 @@ class FilmPad:
         self._tick_elapsed_timer()
 
     def _cancel_writer_ai_edit(self) -> None:
+        if self._tp_running:
+            self._tp_running = False
+            proc = self._writer_ai_process
+            if proc is not None:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+            self._writer_ai_process = None
+            self.text.tag_remove(AUTO_TRANSCRIPT_TAG, "1.0", tk.END)
+            if self._tp_btn:
+                self._tp_btn.configure(text="\u25b6 Typewriter Postscript")
+            self._close_progress_overlay()
+            self.writer_ai_generating = False
+            self.writer_ai_status_var.set("Typewriter Postscript cancelled.")
+            return
         if self._script_supervisor_running:
             self._script_supervisor_running = False
             proc = self._writer_ai_process
@@ -5270,26 +5288,39 @@ class FilmPad:
         return cleaned.strip()
 
     def _strip_scene_card_metadata(self) -> None:
-        """Menu action: strip scene-card metadata from the current document."""
+        """Menu action: strip scene-card metadata and known document artifacts."""
         content = self.text.get("1.0", "end-1c")
-        if not any(marker in content for marker in (
+        # Check for scene-card markers OR the lighter artifact patterns
+        _ARTIFACT_MARKERS = (
             "SCENE NUMBER:", "SOURCE RANGE:", "CHARACTERS PRESENT:",
             "SITUATIONAL CUES PRESENT:", "SOURCE DIALOGUE INSIDE THIS SCENE:",
             "ADAPTED SCREENPLAY SCENE:",
-        )):
-            messagebox.showinfo("Strip Metadata", "No scene-card metadata found in this document.")
+        )
+        _has_card = any(m in content for m in _ARTIFACT_MARKERS)
+        _has_artifacts = bool(
+            re.search(
+                r"\.md\b"
+                r"|^\s*(Not provided|Not Available|Unclear|Unknown|Unspecified|\(None\)|None|N/A|TBD)\s*$"
+                r"|^\s*\(Note:"
+                r"|^SCENE\s*[#\d]+\s*[:\.]\s"
+                r"|^#\s+[A-Z][A-Z\s\-]+$",
+                content, re.MULTILINE | re.IGNORECASE,
+            )
+        )
+        if not _has_card and not _has_artifacts:
+            messagebox.showinfo("Strip Artifacts", "No known artifacts found in this document.")
             return
         cleaned = self._clean_scene_card_metadata(content)
         if cleaned == content.strip():
-            messagebox.showinfo("Strip Metadata", "Nothing to strip \u2014 document unchanged.")
+            messagebox.showinfo("Strip Artifacts", "Nothing to strip \u2014 document unchanged.")
             return
         removed = len(content) - len(cleaned)
         self.text.delete("1.0", tk.END)
         self.text.insert("1.0", cleaned)
         self.text.edit_modified(True)
         messagebox.showinfo(
-            "Strip Metadata",
-            f"Done. Removed approximately {removed} characters of scene-card metadata.",
+            "Strip Artifacts",
+            f"Done. Removed approximately {removed} characters of artifacts.",
         )
 
     def _sanitize_local_ai_output(self, text: str) -> str:
