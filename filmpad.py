@@ -2153,26 +2153,35 @@ class FilmPad:
             "You are an expert screenplay writer.\n",
             "Output ONLY screenplay text in proper industry-standard format.\n",
             "No preamble, no notes, no explanations \u2014 just the screenplay content.\n\n",
+            # Task leads — highest weight
+            f"TASK (do exactly this):\n{user_prompt}\n\n",
         ]
-        # Prompt carries most weight — it leads the response
-        parts.append(f"INSTRUCTION (follow this precisely):\n{user_prompt}\n\n")
         if project_context:
             parts.append(
-                f"PROJECT KNOWLEDGE (names/locations reference \u2014 stay consistent):\n"
-                f"{project_context[:1500]}\n\n"
+                f"PROJECT KNOWLEDGE (use this to fill in the title, author, characters, "
+                f"genre, and any other gaps the TASK requires):\n"
+                f"{'=' * 40}\n{project_context[:2000]}\n\n"
             )
         if context:
-            label = "SURROUNDING CONTEXT" if create_mode else "SELECTED TEXT (edit this)"
-            parts.append(f"{label}:\n{'=' * 40}\n{context}\n\n")
+            if create_mode:
+                parts.append(
+                    f"SURROUNDING SCRIPT CONTEXT "
+                    f"(reference only \u2014 do NOT continue or extend this text):\n"
+                    f"{'=' * 40}\n{context}\n\n"
+                )
+            else:
+                parts.append(f"SELECTED TEXT (edit this per the TASK):\n{'=' * 40}\n{context}\n\n")
+        # Repeat task at the end so the model doesn't drift
         if create_mode:
             parts.append(
-                "Write the new screenplay content requested by the INSTRUCTION above.\n"
-                "Insert it naturally after the SURROUNDING CONTEXT if context is provided.\n"
-                "Output ONLY the new content to insert, nothing else."
+                f"REMINDER \u2014 write exactly what the TASK requests:\n{user_prompt}\n\n"
+                "Do NOT write dialogue, action lines, or continue the script unless "
+                "the TASK specifically asks for it.\n"
+                "Output ONLY the content requested by the TASK above, nothing else."
             )
         else:
             parts.append(
-                "Rewrite the SELECTED TEXT following the INSTRUCTION above.\n"
+                "Rewrite the SELECTED TEXT following the TASK above.\n"
                 "Output ONLY the rewritten text, nothing else."
             )
         return "".join(parts)
