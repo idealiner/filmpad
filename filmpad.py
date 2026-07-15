@@ -342,6 +342,8 @@ class FilmPad:
         self._writer_ai_cancelled = False
         self._writer_ai_process: subprocess.Popen | None = None
         self._writer_ai_sel_start: str | None = None
+        self._wa_full_log: list[str] = []
+        self._ask_editor_insert_pos: str | None = None
         self._writer_ai_sel_end: str | None = None
         self._auto_transcript_running = False
         self._auto_transcript_cancelled = False
@@ -1608,11 +1610,11 @@ class FilmPad:
             command=self._transcribe_to_script_format,
         ).pack(fill="x", pady=(2, 0))
         ttk.Button(
-            _wa, text="Edit Selection", command=self._run_writer_ai_edit
+            _wa, text="\u270f Ask Editor", command=self._run_ask_editor
         ).pack(fill="x", pady=(4, 0))
         ttk.Button(
-            _wa, text="\u25a7 Review Last Output",
-            command=self._show_writer_ai_comparison,
+            _wa, text="\U0001f4cb View AI Log",
+            command=self._show_wa_log_window,
         ).pack(fill="x", pady=(4, 0))
         ttk.Button(
             _wa, text="Save", command=self.save_file
@@ -2069,10 +2071,11 @@ class FilmPad:
             self.writer_ai_status_var.set("Cancelled.")
             return
         if returncode != 0 or not output.strip():
-            self.writer_ai_status_var.set("Error or no output from model.")
+            msg = "Error or no output from model."
+            self.writer_ai_status_var.set(msg)
+            self._wa_full_log.append(f"[Transcribe] {msg}")
             return
         cleaned = self._sanitize_local_ai_output(output).strip()
-        # Capture the original text for side-by-side review before any replacement
         if self._writer_ai_sel_start and self._writer_ai_sel_end:
             original = self.text.get(self._writer_ai_sel_start, self._writer_ai_sel_end)
         else:
@@ -2083,8 +2086,200 @@ class FilmPad:
             "sel_start": self._writer_ai_sel_start,
             "sel_end": self._writer_ai_sel_end,
         }
+        self._wa_full_log.append(f"[Transcribe] Done \u2014 {len(cleaned)} chars")
         self.writer_ai_status_var.set("Done. Review in comparison pane.")
         self._show_writer_ai_comparison()
+
+    # ── Ask Editor (free-form prompt — create or edit) ────────────────────────────
+
+    def _run_ask_editor(self) -> None:
+        if self.writer_ai_generating:
+            return
+        user_prompt = self.writer_ai_prompt_text.get("1.0", "end-1c").strip()
+        if not user_prompt:
+            messagebox.showinfo("Ask Editor", "Enter a prompt first.")
+            return
+
+        # Determine mode: create (no selection) or edit (selection)
+        try:
+            sel_start = self.text.index(tk.SEL_FIRST)
+            sel_end   = self.text.index(tk.SEL_LAST)
+            selected  = self.text.get(sel_start, sel_end).strip()
+        except tk.TclError:
+            sel_start = sel_end = selected = None
+
+        model = self.writer_ai_model_var.get()
+        project_context = self._read_project_knowledge()
+
+        if selected:
+            # Edit mode: selected text is context, prompt drives the rewrite
+            self._writer_ai_sel_start = sel_start
+            self._writer_ai_sel_end   = sel_end
+            self._ask_editor_insert_pos = None
+            full_prompt = self._build_ask_editor_prompt(selected, user_prompt, project_context)
+            detail = f"Edit: {user_prompt[:55]}..."
+        else:
+            # Create mode: no selection, insert at cursor
+            cursor = self.text.index(tk.INSERT)
+            self._ask_editor_insert_pos = cursor
+            self._writer_ai_sel_start = None
+            self._writer_ai_sel_end   = None
+            # Send a small window of surrounding lines as context only
+            try:
+                cur_line = int(cursor.split(".")[0])
+                ctx_start = max(1, cur_line - 10)
+                ctx_end   = min(int(self.text.index("end-1c").split(".")[0]), cur_line + 5)
+                surrounding = self.text.get(f"{ctx_start}.0", f"{ctx_end}.end").strip()
+            except Exception:
+                surrounding = ""
+            full_prompt = self._build_ask_editor_prompt(surrounding, user_prompt, project_context, create_mode=True)
+            detail = f"Create: {user_prompt[:52]}..."
+
+        self.writer_ai_generating = True
+        self._writer_ai_cancelled = False
+        self.writer_ai_status_var.set("Asking editor...")
+        self._show_writer_ai_progress_overlay(detail, model)
+        threading.Thread(
+            target=self._run_ask_editor_thread,
+            args=(model, full_prompt, bool(selected)),
+            daemon=True,
+        ).start()
+
+    def _build_ask_editor_prompt(
+        self, context: str, user_prompt: str,
+        project_context: str, create_mode: bool = False
+    ) -> str:
+        parts = [
+            "You are an expert screenplay writer.\n",
+            "Output ONLY screenplay text in proper industry-standard format.\n",
+            "No preamble, no notes, no explanations \u2014 just the screenplay content.\n\n",
+        ]
+        # Prompt carries most weight — it leads the response
+        parts.append(f"INSTRUCTION (follow this precisely):\n{user_prompt}\n\n")
+        if project_context:
+            parts.append(
+                f"PROJECT KNOWLEDGE (names/locations reference \u2014 stay consistent):\n"
+                f"{project_context[:1500]}\n\n"
+            )
+        if context:
+            label = "SURROUNDING CONTEXT" if create_mode else "SELECTED TEXT (edit this)"
+            parts.append(f"{label}:\n{'=' * 40}\n{context}\n\n")
+        if create_mode:
+            parts.append(
+                "Write the new screenplay content requested by the INSTRUCTION above.\n"
+                "Insert it naturally after the SURROUNDING CONTEXT if context is provided.\n"
+                "Output ONLY the new content to insert, nothing else."
+            )
+        else:
+            parts.append(
+                "Rewrite the SELECTED TEXT following the INSTRUCTION above.\n"
+                "Output ONLY the rewritten text, nothing else."
+            )
+        return "".join(parts)
+
+    def _run_ask_editor_thread(self, model: str, prompt: str, edit_mode: bool) -> None:
+        import os
+        if not self._ensure_ollama_in_thread():
+            self.root.after(0, lambda: messagebox.showerror(
+                "Ollama", "Could not start Ollama.\n\nMake sure it is installed."
+            ))
+            self.root.after(0, self._finish_ask_editor, "", 1, edit_mode)
+            return
+        try:
+            env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
+            proc = subprocess.Popen(
+                ["ollama", "run", model],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env=env,
+            )
+            self._writer_ai_process = proc
+            try:
+                out, _err = proc.communicate(input=prompt.encode("utf-8"), timeout=300)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                self.root.after(0, self._finish_ask_editor, "", 1, edit_mode)
+                return
+            output = out.decode("utf-8", errors="replace")
+            self.root.after(0, self._finish_ask_editor, output, proc.returncode, edit_mode)
+        except Exception:
+            self.root.after(0, self._finish_ask_editor, "", 1, edit_mode)
+
+    def _finish_ask_editor(self, output: str, returncode: int, edit_mode: bool) -> None:
+        self._close_progress_overlay()
+        self.writer_ai_generating = False
+        self._writer_ai_process = None
+        if self._writer_ai_cancelled:
+            self.writer_ai_status_var.set("Cancelled.")
+            return
+        if returncode != 0 or not output.strip():
+            msg = "Error or no output from model."
+            self.writer_ai_status_var.set(msg)
+            self._wa_full_log.append(f"[Ask Editor] {msg}")
+            return
+        cleaned = self._sanitize_local_ai_output(output).strip()
+        if not cleaned:
+            self.writer_ai_status_var.set("Model returned empty output.")
+            return
+
+        if edit_mode:
+            # Edit mode: show comparison window as before
+            if self._writer_ai_sel_start and self._writer_ai_sel_end:
+                original = self.text.get(self._writer_ai_sel_start, self._writer_ai_sel_end)
+            else:
+                original = ""
+            self._last_comparison = {
+                "original": original,
+                "proposed": cleaned,
+                "sel_start": self._writer_ai_sel_start,
+                "sel_end":   self._writer_ai_sel_end,
+            }
+            self._wa_full_log.append(f"[Ask Editor / edit] Done \u2014 {len(cleaned)} chars")
+            self.writer_ai_status_var.set("Done. Review in comparison pane.")
+            self._show_writer_ai_comparison()
+        else:
+            # Create mode: insert directly at saved cursor position
+            pos = self._ask_editor_insert_pos or self.text.index(tk.INSERT)
+            insert_text = cleaned
+            if not insert_text.startswith("\n"):
+                insert_text = "\n\n" + insert_text
+            if not insert_text.endswith("\n"):
+                insert_text = insert_text + "\n\n"
+            self.text.edit_separator()
+            self.text.insert(pos, insert_text)
+            self.text.edit_separator()
+            new_pos = self.text.index(f"{pos}+{len(insert_text)}c")
+            self.text.mark_set(tk.INSERT, new_pos)
+            self.text.see(tk.INSERT)
+            self._wa_full_log.append(f"[Ask Editor / create] Inserted {len(cleaned)} chars at {pos}")
+            self.writer_ai_status_var.set(f"Done \u2014 inserted {len(cleaned)} characters at cursor.")
+
+    def _show_wa_log_window(self) -> None:
+        c = DARK_COLORS if self._dark_mode else LIGHT_COLORS
+        win = tk.Toplevel(self.root)
+        win.title("Writer AI \u2014 Session Log")
+        win.transient(self.root)
+        win.geometry("560x380")
+        win.configure(bg=c["ttk_bg"])
+        frm = ttk.Frame(win, padding=10)
+        frm.pack(fill="both", expand=True)
+        txt = tk.Text(
+            frm, wrap="word", font=("TkFixedFont", 9),
+            background=c["entry_bg"], foreground=c["ttk_fg"],
+            relief="flat", borderwidth=0,
+        )
+        scr = ttk.Scrollbar(frm, command=txt.yview)
+        txt.configure(yscrollcommand=scr.set)
+        scr.pack(side="right", fill="y")
+        txt.pack(fill="both", expand=True)
+        log_text = (
+            "\n".join(self._wa_full_log)
+            if self._wa_full_log
+            else "No entries yet. Use Transcribe or Ask Editor first."
+        )
+        txt.insert("1.0", log_text)
+        txt.configure(state="disabled")
+        ttk.Button(frm, text="Close", command=win.destroy).pack(pady=(8, 0))
 
     def _show_writer_ai_comparison(self) -> None:
         """Open (or re-open) the side-by-side original vs proposed comparison window."""
