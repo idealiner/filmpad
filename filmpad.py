@@ -2152,10 +2152,10 @@ class FilmPad:
         "9. Do NOT add anything not present in the source: no placeholders, "
         "no [brackets], no explanatory notes, no preamble, no extra dialogue, nothing.\n"
         "10. Do NOT merge, split, or reorder scenes.\n"
-        "11. Do NOT invent or guess character names, locations, or dialogue. "
-        "If a name is unclear in the source, use the name exactly as it appears. "
-        "If a location is unknown, write INT. UNKNOWN LOCATION \u2014 DAY rather than guessing.\n"
-        "12. Do NOT hallucinate. Every element of the output must be present verbatim in the source text.\n\n"
+        "11. Do NOT invent character names. Use only names that appear in the source text. "
+        "If a speaker is unidentified, use UNKNOWN SPEAKER as the character cue.\n"
+        "12. Do NOT add story events, locations, or dialogue that are not in the source. "
+        "Reformatting and restructuring existing content is your job \u2014 inventing new content is not.\n\n"
         "Output the reformatted screenplay and nothing else."
     )
 
