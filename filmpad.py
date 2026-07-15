@@ -5721,15 +5721,21 @@ class FilmPad:
             cleaned = cleaned.replace(bad, good)
         cleaned = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", cleaned)
         cleaned = cleaned.replace("\r", "")
-        # Repair line-wrap artifacts where a word was split mid-word by the terminal,
-        # e.g. "fr\nfrom Bronxville" -> "from Bronxville"
+        # Repair line-wrap artifacts where a word was split mid-word by the terminal.
+        # Handles both plain and quote-wrapped restarts:
+        #   "BRINKCHASE\nBRINKCHASER"   -> "BRINKCHASER"
+        #   "BRINKCHASE\n\"BRINKCHASER" -> "\"BRINKCHASER"
+        #   "fr\nfrom Bronxville"       -> "from Bronxville"
         def _rejoin_split_words(m: re.Match) -> str:
-            first, second = m.group(1), m.group(2)
-            if second.startswith(first):
-                return second
-            return first + second
-        # Prefix-overlap split: "fr\nfrom", "shiftin\nshifting" (extended to 12 chars)
-        cleaned = re.sub(r"(\b\w{1,12})\n(\1\w+)", _rejoin_split_words, cleaned)
+            lead, frag, mid, full = m.group(1), m.group(2), m.group(3), m.group(4)
+            if full.startswith(frag):
+                return (mid + full) if mid else (lead + full)
+            return lead + frag + "\n" + mid + full
+        # Prefix-overlap split with optional surrounding quotes (up to 40-char prefix)
+        cleaned = re.sub(
+            r'(["\u201c\']*?)(\b\w{1,40})\n(["\u201c\']*?)(\2\w+)',
+            _rejoin_split_words, cleaned,
+        )
         # Exact word repeated at line break: "with\nwith rest" -> "with rest"
         cleaned = re.sub(r"\b(\w+) *\n\1\b", r"\1", cleaned)
         return cleaned.strip("\n") + "\n"
