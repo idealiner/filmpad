@@ -189,6 +189,43 @@ def _split_tts_chunks(text: str, max_chars: int = 220) -> list[str]:
     return [c for c in chunks if c.strip()]
 
 
+def _list_mic_devices() -> list[tuple[str, str]]:
+    """Return [(display_label, arecord_device_id), ...] from arecord -l."""
+    import re as _re
+    devices: list[tuple[str, str]] = [("Default (system)", "")]
+    try:
+        out = subprocess.run(
+            ["arecord", "-l"], capture_output=True, text=True, timeout=3
+        ).stdout
+        for m in _re.finditer(
+            r"^card\s+(\d+):\s+\S+\s+\[([^\]]+)\].*?device\s+(\d+):\s+\S+\s+\[([^\]]+)\]",
+            out, _re.MULTILINE,
+        ):
+            card, card_name, dev, dev_name = m.group(1, 2, 3, 4)
+            label = f"hw:{card},{dev}  {card_name} / {dev_name}"
+            devices.append((label, f"hw:{card},{dev}"))
+    except Exception:
+        pass
+    return devices
+
+
+def _dictation_max_record_secs() -> int:
+    """Return max recording seconds based on available RAM."""
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    mb = int(line.split()[1]) // 1024
+                    if mb >= 1024:
+                        return 300
+                    if mb >= 512:
+                        return 180
+                    return 60
+    except Exception:
+        pass
+    return 180
+
+
 def _find_whisper_cpp(exe_path: str = "") -> str | None:
     """Return the absolute path to a whisper.cpp whisper-cli binary, or None."""
     candidates: list[str] = []
@@ -237,7 +274,6 @@ class FilmPad:
         self._tts_speed_var = tk.DoubleVar(value=0.8)
         self._read_btn: ttk.Button | None = None
         # ── Dictation toolbar refs/vars (must precede _build_toolbar) ───────────────
-        self._dictation_status_var = tk.StringVar(value="")
         self._dictation_exe_var = tk.StringVar(
             value=str(Path.home() / ".local/bin/whisper-cli")
         )
@@ -247,8 +283,10 @@ class FilmPad:
         self._dictation_lang_var = tk.StringVar(value="en")
         self._dictation_device_var = tk.StringVar(value="")
         self._dictation_start_btn: ttk.Button | None = None
-        self._dictation_stop_btn: ttk.Button | None = None
-        self._dictation_cancel_btn: ttk.Button | None = None
+        self._dictation_overlay: tk.Toplevel | None = None
+        self._dictation_tick_job: str | None = None
+        self._dictation_elapsed_secs: int = 0
+        self._dictation_max_secs: int = 180
         self.screenplay_font = tkfont.Font(family=self.font_var.get(), size=11)
         self.screenplay_font_bold = tkfont.Font(family=self.font_var.get(), size=11, weight="bold")
         self.screenplay_font_scene = tkfont.Font(family=self.font_var.get(), size=11, weight="bold", underline=True)
@@ -467,32 +505,10 @@ class FilmPad:
             self._dictation_start_btn = ttk.Button(
                 self.toolbar,
                 text="\U0001f3a4 Dictate",
-                command=self._start_dictation,
+                command=self._toggle_dictation,
                 width=11,
             )
             self._dictation_start_btn.pack(side="left")
-            self._dictation_stop_btn = ttk.Button(
-                self.toolbar,
-                text="\u23f9 Stop",
-                command=self._stop_dictation_and_transcribe,
-                width=6,
-                state="disabled",
-            )
-            self._dictation_stop_btn.pack(side="left", padx=(4, 0))
-            self._dictation_cancel_btn = ttk.Button(
-                self.toolbar,
-                text="\u2715 Cancel",
-                command=self._cancel_dictation,
-                width=7,
-                state="disabled",
-            )
-            self._dictation_cancel_btn.pack(side="left", padx=(2, 0))
-            ttk.Label(
-                self.toolbar,
-                textvariable=self._dictation_status_var,
-                foreground="#cc0000",
-                width=5,
-            ).pack(side="left", padx=(6, 0))
 
         ttk.Separator(self.toolbar, orient="vertical").pack(side="right", fill="y", padx=(10, 14))
         self._theme_btn = ttk.Button(
@@ -1723,16 +1739,49 @@ class FilmPad:
             _model_row, text="...", width=3, command=self._pick_dictation_model
         ).pack(side="left", padx=(4, 0))
 
-        _lang_dev_row = ttk.Frame(_ds)
-        _lang_dev_row.pack(fill="x", pady=(6, 0))
-        ttk.Label(_lang_dev_row, text="Language").pack(side="left")
+        _lang_row = ttk.Frame(_ds)
+        _lang_row.pack(fill="x", pady=(6, 0))
+        ttk.Label(_lang_row, text="Language").pack(side="left")
         ttk.Entry(
-            _lang_dev_row, textvariable=self._dictation_lang_var, width=5
-        ).pack(side="left", padx=(4, 12))
-        ttk.Label(_lang_dev_row, text="Mic device").pack(side="left")
-        ttk.Entry(
-            _lang_dev_row, textvariable=self._dictation_device_var, width=10
+            _lang_row, textvariable=self._dictation_lang_var, width=5
         ).pack(side="left", padx=(4, 0))
+
+        ttk.Label(
+            _ds, text="Microphone",
+            font=("TkDefaultFont", 8, "bold"),
+        ).pack(anchor="w", pady=(6, 2))
+        _mic_devices = _list_mic_devices()
+        _mic_labels = [d[0] for d in _mic_devices]
+        _mic_ids    = [d[1] for d in _mic_devices]
+        _mic_combo = ttk.Combobox(
+            _ds, textvariable=self._dictation_device_var,
+            values=_mic_labels, state="readonly", width=28,
+        )
+        _mic_combo.pack(fill="x")
+        if _mic_labels:
+            _mic_combo.current(0)
+            self._dictation_device_var.set(_mic_ids[0])
+
+        def _on_mic_select(event=None) -> None:
+            idx = _mic_combo.current()
+            if 0 <= idx < len(_mic_ids):
+                self._dictation_device_var.set(_mic_ids[idx])
+
+        def _refresh_mics() -> None:
+            devs = _list_mic_devices()
+            lbls = [d[0] for d in devs]
+            ids  = [d[1] for d in devs]
+            _mic_combo["values"] = lbls
+            _mic_labels[:] = lbls
+            _mic_ids[:] = ids
+            if lbls:
+                _mic_combo.current(0)
+                self._dictation_device_var.set(ids[0])
+
+        _mic_combo.bind("<<ComboboxSelected>>", _on_mic_select)
+        ttk.Button(
+            _ds, text="\u21bb Refresh microphones", command=_refresh_mics
+        ).pack(fill="x", pady=(4, 0))
         ttk.Label(
             _ds,
             text="Leave Mic device blank for system default (e.g. plughw:1,0 or pulse).",
