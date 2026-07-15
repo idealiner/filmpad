@@ -1936,8 +1936,60 @@ class FilmPad:
             target=self._run_writer_ai_thread, args=(model, full_prompt), daemon=True
         ).start()
 
+    def _ensure_ollama_in_thread(self) -> bool:
+        """Called from a background thread. Starts Ollama if not responding.
+        Returns True when Ollama is ready, False after timeout."""
+        ollama_cmd = shutil.which("ollama") or "ollama"
+        # Fast path: already running
+        try:
+            r = subprocess.run([ollama_cmd, "list"], capture_output=True, timeout=3)
+            if r.returncode == 0:
+                return True
+        except Exception:
+            pass
+        # Not running — notify user via status label
+        self.root.after(0, lambda: self.writer_ai_status_var.set("Starting Ollama..."))
+        self.root.after(0, lambda: self._progress_detail_var.set("Starting Ollama — please wait..."))
+        # Try systemctl service first (no-op if not configured)
+        for cmd in (
+            ["systemctl", "--user", "start", "ollama"],
+            ["sudo", "systemctl", "start", "ollama"],
+        ):
+            try:
+                subprocess.run(cmd, capture_output=True, timeout=5)
+            except Exception:
+                pass
+        # Fall back to spawning ollama serve directly
+        try:
+            subprocess.Popen(
+                [ollama_cmd, "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+        # Poll until ready (max 20 seconds)
+        for _ in range(20):
+            time.sleep(1)
+            try:
+                r = subprocess.run([ollama_cmd, "list"], capture_output=True, timeout=3)
+                if r.returncode == 0:
+                    self.root.after(0, lambda: self._progress_detail_var.set(""))
+                    return True
+            except Exception:
+                pass
+        return False
+
     def _run_writer_ai_thread(self, model: str, prompt: str) -> None:
         import os
+        if not self._ensure_ollama_in_thread():
+            self.root.after(0, lambda: messagebox.showerror(
+                "Ollama",
+                "Could not start Ollama.\n\nMake sure it is installed and try again.\n"
+                "Install: https://ollama.com/download",
+            ))
+            self.root.after(0, self._finish_writer_ai_edit, "", 1)
+            return
         try:
             env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
             proc = subprocess.Popen(
@@ -2512,6 +2564,13 @@ class FilmPad:
 
     def _auto_transcript_thread(self, model: str, prompt: str) -> None:
         import os
+        if not self._ensure_ollama_in_thread():
+            self.root.after(0, lambda: messagebox.showerror(
+                "Ollama",
+                "Could not start Ollama.\n\nMake sure it is installed and try again.",
+            ))
+            self.root.after(0, self._auto_transcript_finish, "", 1)
+            return
         try:
             env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
             proc = subprocess.Popen(
@@ -3126,6 +3185,13 @@ class FilmPad:
     ) -> None:
         import os
         _finish = finish_fn if finish_fn is not None else self._ss_finish
+        if not self._ensure_ollama_in_thread():
+            self.root.after(0, lambda: messagebox.showerror(
+                "Ollama",
+                "Could not start Ollama.\n\nMake sure it is installed and try again.",
+            ))
+            self.root.after(0, _finish, "", 1, original, start, end, scene_num, total)
+            return
         try:
             ollama = shutil.which("ollama") or "ollama"
             env = {**os.environ, "COLUMNS": "10000", "TERM": "dumb"}
