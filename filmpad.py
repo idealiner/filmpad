@@ -2151,7 +2151,11 @@ class FilmPad:
         "or rearrange anything. Not a single word.\n"
         "9. Do NOT add anything not present in the source: no placeholders, "
         "no [brackets], no explanatory notes, no preamble, no extra dialogue, nothing.\n"
-        "10. Do NOT merge, split, or reorder scenes.\n\n"
+        "10. Do NOT merge, split, or reorder scenes.\n"
+        "11. Do NOT invent or guess character names, locations, or dialogue. "
+        "If a name is unclear in the source, use the name exactly as it appears. "
+        "If a location is unknown, write INT. UNKNOWN LOCATION \u2014 DAY rather than guessing.\n"
+        "12. Do NOT hallucinate. Every element of the output must be present verbatim in the source text.\n\n"
         "Output the reformatted screenplay and nothing else."
     )
 
@@ -2184,7 +2188,9 @@ class FilmPad:
         "- Dialogue: do not change a single word any character speaks\n"
         "- Action lines: do not rephrase, compress, or expand any description\n"
         "- Story events, props, characters, locations: do not add or remove anything\n"
-        "- Sequence: do not reorder anything\n\n"
+        "- Sequence: do not reorder anything\n"
+        "- Character names: use only names already present in this scene\n"
+        "- Do NOT invent new characters, locations, events, or dialogue under any circumstances\n\n"
         "### REMINDER ###\n\n"
         "OUTPUT ONLY THE SCENE TEXT. Nothing else. No notes. No explanations."
     )
@@ -2192,27 +2198,33 @@ class FilmPad:
     _TP_INSTRUCTIONS_DEFAULT = (
         "### TYPEWRITER POSTSCRIPT — FORMATTING PASS ONLY ###\n\n"
         "OUTPUT ONLY THE REFORMATTED SCENE TEXT. No notes. No explanations.\n\n"
-        "Your ONLY job is to apply industry-standard screenplay formatting to the text below.\n"
-        "Do NOT change, add, or remove any words, sentences, or story content.\n\n"
+        "Your ONLY job is to apply industry-standard screenplay formatting.\n"
+        "Do NOT change, add, or remove any story words, sentences, or content.\n\n"
         "FORMATTING CORRECTIONS TO APPLY:\n\n"
         "1. SCENE HEADINGS\n"
         "   Convert to ALL CAPS. Format: INT./EXT. LOCATION \u2014 TIME\n"
-        "   Fix capitalisation and punctuation only. Do not rewrite location or time.\n\n"
+        "   Remove any SCENE number prefix: 'SCENE 3: INT. ...' \u2192 'INT. ...'\n"
+        "   Use em dash (\u2014) between location and time.\n\n"
         "2. CHARACTER CUES\n"
         "   Convert to ALL CAPS on their own line above the dialogue.\n"
+        "   If a line reads 'Name: dialogue' or 'First Last: dialogue', reformat as:\n"
+        "       NAME\n"
+        "       dialogue text\n"
         "   Include extensions in parentheses: (V.O.), (O.S.), (CONT'D).\n\n"
         "3. TRANSITIONS\n"
-        "   Convert to ALL CAPS on their own line, ending with colon or period:\n"
-        "   CUT TO:  FADE OUT.  DISSOLVE TO:  SMASH CUT TO:  MATCH CUT TO:\n\n"
+        "   Convert to ALL CAPS on their own line, ending with colon or period.\n\n"
         "4. PARENTHETICALS\n"
         "   Format on their own line, in parentheses, between the character cue and dialogue.\n\n"
-        "5. SCENE HEADING DASHES\n"
-        "   Use em dash (\u2014) between location and time: INT. OFFICE \u2014 DAY\n\n"
+        "5. DELETE THESE ARTIFACT LINES (no story value):\n"
+        "   - Lines exactly matching: Not provided, Not Available, Unclear, Unknown, (None), N/A\n"
+        "   - Inline LLM notes: lines starting with (Note: or Note: This scene...\n"
+        "   - File references: any line containing .md (e.g. '03_File.md (context)')\n"
+        "   - Template headers: lines starting with # followed by ALL CAPS words\n"
+        "   - SCENE number prefixes on their own line: SCENE 3, SCENE #4\n\n"
         "NEVER DO:\n"
-        "- Delete any line, sentence, dialogue, or action beat\n"
+        "- Delete any line, sentence, dialogue, or action beat that has story content\n"
         "- Add new words, descriptions, or content not already present\n"
         "- Change character names, locations, or any story detail\n"
-        "- Reorder scenes, dialogue, or action lines\n"
         "- Add notes, commentary, or explanations\n\n"
         "If the scene is already correctly formatted, return it completely unchanged.\n"
         "OUTPUT ONLY THE SCENE TEXT. Nothing else."
@@ -2228,7 +2240,11 @@ class FilmPad:
         "2. ARTIFACTS\n"
         "   Delete lines that are transcription/production leftovers with no story value:\n"
         "   [CONTINUED], [END OF BLOCK], [inaudible], block-boundary orphan fragments,\n"
-        "   structural outline text (ACT I \u2014 ..., Ordinary World, Purpose:, etc.).\n\n"
+        "   structural outline text (ACT I \u2014 ..., Ordinary World, Purpose:, etc.),\n"
+        "   standalone placeholder words (Not provided, Unclear, Unknown, (None), N/A),\n"
+        "   inline LLM notes ((Note: ...) or Note: This scene is correct...),\n"
+        "   file references (anything.md ...), template headers (# PROJECT \u2014 TEMPLATE),\n"
+        "   scene number prefixes (SCENE 3: or SCENE #: at the start of a heading).\n\n"
         "3. EXACT DUPLICATIONS\n"
         "   If the same sentence or line appears twice, delete the second occurrence.\n\n"
         "4. MISSING CHARACTER CUES\n"
@@ -4893,16 +4909,28 @@ class FilmPad:
         self.local_ai_status_var.set("Generation cancelled.")
 
     def _tp_scene_needs_formatting(self, scene_text: str) -> bool:
-        """True = scene has detectable formatting issues TP should fix.
-        Checks for scene headings, transitions, or character cues not in ALL CAPS."""
+        """True = scene has detectable formatting issues TP should fix."""
         import re
         _HEADING = re.compile(r'^\s*(int|ext|i/e)\b', re.IGNORECASE)
         _TRANS = re.compile(
             r'^\s*(cut to|fade out|fade in|fade to|dissolve to'
             r'|smash cut|match cut|wipe to)\b', re.IGNORECASE
         )
-        # Pattern for lines that look like character cues but aren't ALL CAPS
         _CUE_LOWER = re.compile(r'^[A-Z][a-z][A-Za-z\s\'\-\.]{0,30}$')
+        # Name: "dialogue" inline format
+        _INLINE_DIALOGUE = re.compile(r'^[A-Za-z][A-Za-z\s,\.]{1,40}:\s+["\u201c]')
+        # SCENE #: prefix
+        _SCENE_NUM = re.compile(r'^SCENE\s*[#\d]+\s*[:\.]', re.IGNORECASE)
+        # Placeholder words
+        _PLACEHOLDER = re.compile(
+            r'^(Not provided|Not Available|Unclear|Unknown|Unspecified'
+            r'|\(None\)|None|N/A|TBD)$', re.IGNORECASE
+        )
+        # File references, LLM notes, template headers
+        _JUNK = re.compile(
+            r'\.md\b|^\(Note:|^Note:\s*(This scene|No changes|Scene is correct)'
+            r'|^#\s+[A-Z][A-Z\s\-]+$', re.IGNORECASE
+        )
         for ln in scene_text.splitlines():
             s = ln.strip()
             if not s:
@@ -4912,6 +4940,14 @@ class FilmPad:
             if _TRANS.match(s) and s != s.upper():
                 return True
             if _CUE_LOWER.match(s):
+                return True
+            if _INLINE_DIALOGUE.match(s):
+                return True
+            if _SCENE_NUM.match(s):
+                return True
+            if _PLACEHOLDER.match(s):
+                return True
+            if _JUNK.search(s):
                 return True
         return False
 
@@ -4927,7 +4963,11 @@ class FilmPad:
         _ART = re.compile(
             r'\[(?:continued|end of block|inaudible|transcription|scene continues|cut here)\]'
             r'|5-ACT\b|HERO.S JOURNEY|ordinary world|call to adventure|purpose\s*:'
-            r'|\bACT [IVX]+\s*[\u2014\-/]',
+            r'|\bACT [IVX]+\s*[\u2014\-/]'
+            r'|\.md\b'  # file references
+            r'|^\(Note:|^Note:\s*(This scene|No changes)'  # LLM notes
+            r'|^SCENE\s*[#\d]+\s*[:\.]'  # SCENE #: prefix
+            r'|^(Not provided|Unclear|Unknown|\(None\)|None)$',  # placeholders
             re.IGNORECASE,
         )
         if any(_ART.search(ln) for ln in lines):
@@ -5093,8 +5133,16 @@ class FilmPad:
             r"|according to|formatting applied|artifacts removed)",
             re.IGNORECASE,
         )
+        # Strip any standalone (Note: ...) lines anywhere in the text
+        _INLINE_NOTE_RE = re.compile(
+            r"(?mi)^\s*\(Note:.*?\)\s*$"
+        )
+        _NOTE_LINE_RE = re.compile(
+            r"(?mi)^\s*Note:\s*(This scene|The scene|No changes|Scene is correct|Scene appears).*$"
+        )
+        text = _INLINE_NOTE_RE.sub("", text)
+        text = _NOTE_LINE_RE.sub("", text)
         lines = text.splitlines()
-        # Strip leading commentary lines (before first screenplay-looking line)
         _SCREENPLAY_RE = re.compile(
             r"^(INT\.|EXT\.|I/E\.|INT /|EXT /|[A-Z][A-Z ]+$|[A-Z]{2}|\s*\(|CUT TO|FADE|SMASH|MATCH|DISSOLVE|THE END)"
         )
@@ -5109,7 +5157,6 @@ class FilmPad:
                 break
             elif i <= 2 and _COMMENT_RE.match(stripped):
                 start = i + 1
-        # Strip trailing commentary lines
         end = len(lines)
         for i in range(len(lines) - 1, start - 1, -1):
             stripped = lines[i].strip()
@@ -5133,8 +5180,26 @@ class FilmPad:
         )
         cleaned = _META.sub("", content)
         cleaned = re.sub(r"(?m)^\d+\s*$", "", cleaned)
-        cleaned = re.sub(r"(?m)^.+\.md\s*-\s*Lines\s*\d+.*$", "", cleaned)
+        # .md file references in any form
+        cleaned = re.sub(r"(?mi)^.*?\.md\b.*$", "", cleaned)
         cleaned = re.sub(r"(?m)^[ \t]*[-*][ \t]+.+$", "", cleaned)
+        # SCENE #: / SCENE 3: / SCENE N. prefixes on scene headings
+        cleaned = re.sub(r"(?mi)^SCENE\s*[#\d]+\s*[:\.]\s*", "", cleaned)
+        # Template / project headers: # TITLE - SUBTITLE
+        cleaned = re.sub(r"(?m)^#\s+[A-Z][A-Z\s\-]+$", "", cleaned)
+        # Standalone placeholder words
+        cleaned = re.sub(
+            r"(?mi)^\s*(Not provided|Not Available|Unclear|Unknown|Unspecified"
+            r"|\(None\)|None|N/A|TBD)\s*$", "", cleaned
+        )
+        # Inline / standalone LLM notes
+        cleaned = re.sub(
+            r"(?mi)^\s*\(Note:.*?\)\s*$", "", cleaned
+        )
+        cleaned = re.sub(
+            r"(?mi)^\s*Note:\s*(This scene|The scene|No changes|Scene is correct).*$",
+            "", cleaned
+        )
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         return cleaned.strip()
 
